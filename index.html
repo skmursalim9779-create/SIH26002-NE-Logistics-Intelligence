@@ -1,0 +1,5676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>SIH 26002 - Disaster Safe Route</title>
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+        }
+
+        header {
+            background: #111827;
+            color: white;
+            padding: 16px 24px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        header p {
+            margin: 5px 0 0;
+            color: #cbd5e1;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            height: calc(100vh - 82px);
+        }
+
+        .sidebar {
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+        }
+
+        .map-container {
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        label {
+            display: block;
+            margin-top: 12px;
+            font-weight: bold;
+        }
+
+        /* --------------------------------------------------
+           LIVE CURRENT-LOCATION MARKER
+           -------------------------------------------------- */
+        .live-location-marker {
+            position: relative;
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .live-location-marker .pulse {
+            position: absolute;
+            width: 34px;
+            height: 34px;
+            border: 2px solid rgba(37, 99, 235, 0.45);
+            border-radius: 50%;
+            animation: locationPulse 1.8s ease-out infinite;
+        }
+
+        .live-location-marker .dot {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #2563eb;
+            border: 3px solid #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
+        }
+
+        .live-location-marker .arrow {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 15px solid #1d4ed8;
+            transform-origin: 50% 65%;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,.35));
+            transition: transform .25s ease;
+        }
+
+        @keyframes locationPulse {
+            0% { transform: scale(.55); opacity: .9; }
+            70% { transform: scale(1.25); opacity: .15; }
+            100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        /* --------------------------------------------------
+           SMART INDIAN LOCATION AUTOCOMPLETE
+           -------------------------------------------------- */
+        .location-field {
+            position: relative;
+        }
+
+        .location-field input {
+            position: relative;
+            z-index: 20;
+            width: 100%;
+            padding-right: 58px;
+        }
+
+        .from-location-wrap {
+            position: relative;
+        }
+
+        .current-location-trigger {
+            position: absolute;
+            z-index: 30;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            margin: 0;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: #2563eb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: none;
+        }
+
+        .current-location-trigger:hover {
+            background: #eff6ff;
+        }
+
+        .current-location-trigger:focus-visible {
+            outline: 3px solid rgba(37,99,235,.25);
+            outline-offset: 2px;
+        }
+
+        .current-location-trigger .location-glyph {
+            width: 25px;
+            height: 25px;
+            position: relative;
+            display: block;
+        }
+
+        .current-location-trigger .location-glyph::before {
+            content: "";
+            position: absolute;
+            inset: 5px;
+            border: 3px solid #2563eb;
+            border-radius: 50%;
+        }
+
+        .current-location-trigger .location-glyph::after {
+            content: "";
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            width: 5px;
+            height: 5px;
+            background: #2563eb;
+            border-radius: 50%;
+            box-shadow: 0 0 0 3px #fff;
+        }
+
+        .current-location-trigger .crosshair {
+            position: absolute;
+            inset: 0;
+        }
+
+        .current-location-trigger .crosshair::before,
+        .current-location-trigger .crosshair::after {
+            content: "";
+            position: absolute;
+            background: #2563eb;
+            border-radius: 2px;
+        }
+
+        .current-location-trigger .crosshair::before {
+            width: 3px;
+            height: 25px;
+            left: 11px;
+            top: 0;
+        }
+
+        .current-location-trigger .crosshair::after {
+            width: 25px;
+            height: 3px;
+            left: 0;
+            top: 11px;
+        }
+
+        .current-location-trigger.active .location-glyph::before,
+        .current-location-trigger.active .location-glyph::after,
+        .current-location-trigger.active .crosshair::before,
+        .current-location-trigger.active .crosshair::after {
+            animation: locationIconPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes locationIconPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .45; }
+        }
+
+        .location-suggestions {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 2000;
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+            max-height: 280px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .location-suggestions.open {
+            display: block;
+        }
+
+        .location-suggestion {
+            width: 100%;
+            display: block;
+            text-align: left;
+            margin: 0;
+            padding: 10px 12px;
+            border: 0;
+            border-bottom: 1px solid #eef2f7;
+            border-radius: 0;
+            background: #fff;
+            color: #111827;
+            cursor: pointer;
+            font-weight: normal;
+        }
+
+        .location-suggestion:last-child {
+            border-bottom: 0;
+        }
+
+        .location-suggestion:hover,
+        .location-suggestion.active {
+            background: #eff6ff;
+        }
+
+        .location-suggestion .place-name {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .location-suggestion .place-detail {
+            margin-top: 2px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .location-suggestion .place-badge {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #e0f2fe;
+            color: #075985;
+            font-size: 10px;
+            font-weight: 700;
+            vertical-align: middle;
+        }
+
+        .suggestions-loading,
+        .suggestions-empty {
+            padding: 12px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        #routeBtn {
+            background: #2563eb;
+            color: white;
+        }
+
+        #locationBtn {
+            background: #111827;
+            color: white;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+
+        .card {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+
+        .alert {
+            margin-top: 10px;
+            padding: 12px;
+            border-radius: 8px;
+            color: #111;
+        }
+
+        .red {
+            background: #fecaca;
+            border-left: 6px solid #dc2626;
+        }
+
+        .orange {
+            background: #fed7aa;
+            border-left: 6px solid #ea580c;
+        }
+
+        .yellow {
+            background: #fef08a;
+            border-left: 6px solid #ca8a04;
+        }
+
+        .green {
+            background: #bbf7d0;
+            border-left: 6px solid #16a34a;
+        }
+/* --------------------------------------------------
+   COMPACT DISASTER ALERTS
+   -------------------------------------------------- */
+
+#alerts {
+    max-height: 230px;
+    overflow-y: auto;
+    padding-right: 3px;
+}
+
+#alerts .alert {
+    margin-top: 6px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    border-left-width: 4px;
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+#alerts .alert:first-child {
+    margin-top: 0;
+}
+
+#alerts .alert b {
+    font-size: 12px;
+}
+
+#alerts .alert small {
+    font-size: 10px;
+}
+
+#alerts .alert p {
+    margin: 2px 0;
+}
+
+#alerts::-webkit-scrollbar {
+    width: 5px;
+}
+
+#alerts::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+        .legend-severity-row {
+            display:flex;
+            align-items:center;
+            gap:5px;
+            min-height:24px;
+        }
+        .legend-count {
+            margin-left:auto;
+            font-size:12px;
+            font-weight:800;
+            color:#64748b;
+            background:#f1f5f9;
+            border-radius:999px;
+            padding:2px 7px;
+        }
+        .legend-severity-row.inactive {
+            opacity:.48;
+        }
+
+        /* Compact map legend: collapsed by default so it never hides the map. */
+        .legend {
+            position: absolute;
+            bottom: 18px;
+            right: 18px;
+            z-index: 1000;
+            width: min(360px, calc(100% - 36px));
+            box-sizing: border-box;
+        }
+
+        .legend-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            border: 1px solid #cbd5e1;
+            background: rgba(255,255,255,.96);
+            color: #0f172a;
+            border-radius: 999px;
+            padding: 9px 14px;
+            font-weight: 800;
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(15,23,42,.20);
+        }
+
+        .legend-toggle:hover {
+            background: #ffffff;
+            transform: translateY(-1px);
+        }
+
+        .legend-panel {
+            display: none;
+            margin-top: 8px;
+            background: rgba(255,255,255,.97);
+            padding: 14px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(15,23,42,.22);
+            border: 1px solid rgba(148,163,184,.45);
+            max-height: min(430px, 52vh);
+            overflow-y: auto;
+        }
+
+        .legend.open .legend-panel {
+            display: block;
+        }
+
+        .legend-close {
+            border: 0;
+            background: #f1f5f9;
+            color: #334155;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 17px;
+            line-height: 1;
+            font-weight: 800;
+        }
+
+        .legend-close:hover {
+            background: #e2e8f0;
+        }
+
+        .legend-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        @media(max-width: 700px) {
+            .legend {
+                right: 10px;
+                bottom: 10px;
+                width: min(330px, calc(100% - 20px));
+            }
+
+            .legend-panel {
+                max-height: 48vh;
+            }
+        }
+
+        .dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        @media(max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+
+            .sidebar {
+                height: auto;
+            }
+
+            .map-container {
+                height: 600px;
+            }
+        }
+
+        .brand-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ner-badge {
+            background: #0f766e;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        select {
+            width: 100%;
+            padding: 11px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .metric {
+            padding: 10px;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+
+        .metric strong {
+            display: block;
+            font-size: 20px;
+            margin-top: 3px;
+        }
+
+        .route-card {
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            margin-top: 10px;
+            background: white;
+        }
+
+        .route-card.best {
+            border: 2px solid #16a34a;
+            background: #f0fdf4;
+        }
+
+        .route-card.warning {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .route-title {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-weight: bold;
+        }
+
+        .score-pill {
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .score-good { background: #bbf7d0; color: #166534; }
+        .score-mid { background: #fef08a; color: #854d0e; }
+        .score-bad { background: #fecaca; color: #991b1b; }
+
+        .mini {
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .logistics-result {
+            margin-top: 10px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #ecfeff;
+            border: 1px solid #a5f3fc;
+        }
+
+        .map-control {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.18);
+            overflow: hidden;
+        }
+
+        .map-control button {
+            width: auto;
+            margin: 0;
+            padding: 9px 12px;
+            border-radius: 0;
+            background: white;
+            color: #111827;
+        }
+
+        .small-btn {
+            padding: 8px 10px;
+            width: auto;
+            margin-top: 8px;
+        }
+
+        .section-title {
+            margin: 0 0 8px;
+        }
+
+        @media(max-width: 900px) {
+            .grid-2, .metric-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+    
+/* ==========================================================
+   ANIMATED HAZARD VISUALIZATION LAYER
+   Code-only SVG/CSS animation; no external hazard images.
+   ========================================================== */
+.hazard-icon{position:relative;width:58px;height:58px;display:flex;align-items:center;justify-content:center;pointer-events:auto;filter:drop-shadow(0 4px 7px rgba(0,0,0,.28))}
+.hazard-icon svg{width:58px;height:58px;overflow:visible}
+.hazard-pulse{animation:hazardPulse 1.7s ease-out infinite;transform-origin:center}
+.hazard-rotate{animation:hazardRotate 3s linear infinite;transform-origin:center}
+.hazard-shake{animation:hazardShake .65s ease-in-out infinite}
+.hazard-flash{animation:hazardFlash 1.5s steps(2,end) infinite}
+.hazard-wave{animation:hazardWave 2s ease-out infinite;transform-origin:center}
+.hazard-rain{animation:hazardRain .65s linear infinite}
+.hazard-snow{animation:hazardSnow 2.2s linear infinite}
+.hazard-rock{animation:hazardRock 1.15s ease-in infinite}
+.hazard-fog{animation:hazardFog 3s ease-in-out infinite}
+.hazard-fire{animation:hazardFire .8s ease-in-out infinite alternate;transform-origin:center bottom}
+@keyframes hazardPulse{0%{transform:scale(.82);opacity:.35}65%{transform:scale(1.18);opacity:.9}100%{transform:scale(1.28);opacity:0}}
+@keyframes hazardRotate{to{transform:rotate(360deg)}}
+@keyframes hazardShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px) rotate(-2deg)}75%{transform:translateX(3px) rotate(2deg)}}
+@keyframes hazardFlash{0%,68%{opacity:.35}72%{opacity:1}76%{opacity:.2}80%,100%{opacity:.9}}
+@keyframes hazardWave{0%{transform:scale(.35);opacity:.8}100%{transform:scale(1.7);opacity:0}}
+@keyframes hazardRain{from{transform:translateY(-7px);opacity:.2}30%{opacity:1}to{transform:translateY(14px);opacity:.1}}
+@keyframes hazardSnow{from{transform:translate(0,-8px);opacity:.2}45%{opacity:1}to{transform:translate(8px,16px);opacity:0}}
+@keyframes hazardRock{0%{transform:translate(0,-14px) rotate(0);opacity:0}30%{opacity:1}100%{transform:translate(9px,13px) rotate(120deg);opacity:0}}
+@keyframes hazardFog{0%,100%{transform:translateX(-8px);opacity:.2}50%{transform:translateX(8px);opacity:.65}}
+@keyframes hazardFire{from{transform:scaleY(.9) rotate(-2deg)}to{transform:scaleY(1.08) rotate(2deg)}}
+.hazard-label{background:rgba(17,24,39,.94);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:7px 9px;box-shadow:0 4px 16px rgba(0,0,0,.28);font-size:12px;line-height:1.25;white-space:nowrap;transform:translateY(4px)}
+.hazard-label strong{display:block;font-size:13px}
+.hazard-label span{font-size:10px;opacity:.82}
+.hazard-area{animation:areaPulse 2.4s ease-in-out infinite}
+@keyframes areaPulse{0%,100%{fill-opacity:.12}50%{fill-opacity:.25}}
+.hazard-area-outline{animation:outlinePulse 2.4s ease-in-out infinite}
+@keyframes outlinePulse{0%,100%{opacity:.45}50%{opacity:1}}
+
+/* Predicted disaster animation layers */
+.predicted-hazard-area{animation:predictedAreaPulse 2.2s ease-in-out infinite;transform-origin:center;}
+.predicted-hazard-outline{animation:predictedOutlinePulse 1.8s ease-in-out infinite;}
+.predicted-hazard-icon{animation:predictedIconFloat 1.8s ease-in-out infinite;}
+.predicted-hazard-path{animation:predictedHazardPulse 1.15s ease-in-out infinite;}
+@keyframes predictedAreaPulse{0%,100%{fill-opacity:.10;stroke-opacity:.55}50%{fill-opacity:.24;stroke-opacity:1}}
+@keyframes predictedOutlinePulse{0%,100%{stroke-width:2;opacity:.45}50%{stroke-width:4;opacity:1}}
+@keyframes predictedIconFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-5px) scale(1.08)}}
+@keyframes predictedHazardPulse{0%,100%{opacity:.35}50%{opacity:1}}
+.prediction-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10px;font-weight:800;letter-spacing:.3px;margin-left:5px;}
+.prediction-note{margin-top:8px;padding:8px 10px;border-radius:8px;background:#eef2ff;border-left:4px solid #6366f1;font-size:12px;}
+.route-card.clickable{cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.route-card.clickable:hover{transform:translateY(-2px);box-shadow:0 5px 18px rgba(15,23,42,.12)}
+.route-card.selected{box-shadow:0 0 0 3px rgba(37,99,235,.15);border-color:#2563eb;background:#eff6ff}
+.hazard-summary{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #e2e8f0;font-size:12px}
+.route-warning{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff7ed;border-left:4px solid #f97316;font-size:12px}
+/* ==========================================================
+   FULL DAY WEATHER FORECAST MODAL
+   ========================================================== */
+
+.weather-forecast-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(15, 23, 42, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.weather-forecast-modal.open {
+    display: flex;
+}
+
+.weather-forecast-panel {
+    width: min(760px, 96vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.30);
+    padding: 20px;
+}
+
+.weather-forecast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.weather-forecast-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.weather-forecast-close {
+    width: 36px;
+    height: 36px;
+    margin: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 22px;
+}
+
+.weather-forecast-close:hover {
+    background: #e2e8f0;
+}
+
+.weather-forecast-summary {
+    padding: 12px;
+    border-radius: 10px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    margin-bottom: 14px;
+}
+
+.weather-hour-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 90px 90px 90px;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 8px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px;
+}
+
+.weather-hour-row.header {
+    font-weight: 800;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.weather-rain-high {
+    font-weight: 800;
+}
+
+@media(max-width: 700px) {
+    .weather-hour-row {
+        grid-template-columns: 65px 1fr 75px;
+    }
+
+    .weather-hour-row .extra-weather {
+        display: none;
+    }
+}
+    </style>
+</head>
+
+<body>
+
+<header>
+    <div class="brand-row">
+        <div>
+            <h1>🛡️ SIH 26002 — AI Logistics & Accessibility Intelligence</h1>
+            <p>Government Alerts + Weather + OpenStreetMap + Risk-Aware Logistics</p>
+        </div>
+        <span class="ner-badge">NORTH EASTERN REGION</span>
+    </div>
+</header>
+
+<div class="container">
+
+    <aside class="sidebar">
+
+
+        <h2>📦 Logistics Mission</h2>
+
+        <div class="card">
+            <h3 class="section-title">Delivery Planning</h3>
+
+            <div class="grid-2">
+                <div>
+                    <label>Goods</label>
+                    <select id="goodsType">
+                        <option value="medicine">💊 Medicine</option>
+                        <option value="food">🍚 Food Supplies</option>
+                        <option value="construction">🧱 Construction Materials</option>
+                        <option value="agriculture">🌾 Agricultural Products</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label>Priority</label>
+                    <select id="priority">
+                        <option value="critical">🔴 Critical</option>
+                        <option value="high">🟠 High</option>
+                        <option value="normal" selected>🟡 Normal</option>
+                        <option value="low">🟢 Low</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div>
+                    <label>Quantity (kg)</label>
+                    <input id="quantity" type="number" min="1" value="500">
+                </div>
+
+                <div>
+                    <label>Vehicle</label>
+                    <select id="vehicle">
+                        <option value="4x4">🚙 4×4</option>
+                        <option value="medium">🚐 Medium Truck</option>
+                        <option value="heavy">🚚 Heavy Truck</option>
+                        <option value="emergency">🚑 Emergency Vehicle</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="section-title">📊 Regional Intelligence</h3>
+            <div class="metric-grid">
+                <div class="metric">Active Alerts<strong id="activeAlertCount">--</strong></div>
+                <div class="metric">Route Risk<strong id="dashboardRisk">--</strong></div>
+                <div class="metric">Weather Risk<strong id="weatherRisk">--</strong></div>
+                <div class="metric">Accessibility<strong id="accessibilityScore">--</strong></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="section-title">🧠 AI Logistics Recommendation</h3>
+            <div id="logisticsRecommendation" class="logistics-result">
+                Enter a source and destination, then calculate the delivery plan.
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="section-title">🛣️ Route Alternatives</h3>
+                <div class="mini" style="margin:-4px 0 10px">Route A is the recommended option. Route B is an alternative and remains fully clickable for comparison.</div>
+            <div id="routeAlternatives">
+                No routes calculated yet.
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="section-title">🏥 Critical Infrastructure</h3>
+            <div id="infrastructureInfo" class="mini">
+                Demo layer: hospitals, relief centres and logistics hubs can be added to this map.
+            </div>
+        </div>
+
+        <div class="card" id="dataSourcesCard">
+            <h3 class="section-title">🔎 Trusted Data Sources</h3>
+            <div class="mini" style="line-height:1.55">
+                <b>Government alerts:</b> NDMA/SACHET CAP alerts<br>
+                <b>Weather forecast:</b> Open-Meteo forecast models using WMO weather codes<br>
+                <b>Elevation:</b> Copernicus DEM GLO-90 via Open-Meteo Elevation API<br>
+                <b>Landslide reference:</b> Geological Survey of India (GSI) susceptibility/inventory resources<br>
+                <b>Fire reference:</b> Forest Survey of India (FSI) Forest Fire Alerts<br>
+                <b>Tsunami reference:</b> INCOIS Indian Tsunami Early Warning System
+            </div>
+            <div class="mini" style="margin-top:8px">
+                No placeholder disaster values are inserted. A live hazard is shown only when
+                the alert has spatial evidence; forecast hazards are derived from the received forecast.
+            </div>
+        </div>
+
+        <h2>Plan Safe Journey</h2>
+
+
+        <label>From</label>
+        <div class="location-field from-location-wrap">
+            <input
+                id="from"
+                autocomplete="off"
+                placeholder="Search Indian city, town or place..."
+                aria-label="Starting location"
+            >
+            <button id="locationBtn" class="current-location-trigger" type="button" title="Use my current location" aria-label="Use my current location">
+                <span class="location-glyph" aria-hidden="true"><span class="crosshair"></span></span>
+            </button>
+            <div id="fromSuggestions" class="location-suggestions" role="listbox" aria-label="From location suggestions"></div>
+        </div>
+
+        <label>Destination</label>
+        <div class="location-field">
+            <input
+                id="to"
+                autocomplete="off"
+                placeholder="Search Indian city, town or place..."
+            >
+            <div id="toSuggestions" class="location-suggestions" role="listbox" aria-label="Destination location suggestions"></div>
+        </div>
+
+        <button id="routeBtn">
+            🧭 Find Safest Route
+        </button>
+
+        <div id="status" class="status">
+            System ready. Government disaster alerts and weather intelligence will update automatically.
+        </div>
+
+        <div id="weather" class="card">
+            <h3>🌦️ Weather</h3>
+            <p>Select a location to load weather.</p>
+        </div>
+<!-- ======================================================
+     FULL DAY WEATHER FORECAST MODAL
+     ====================================================== -->
+
+<div id="weatherForecastModal" class="weather-forecast-modal">
+    <div class="weather-forecast-panel">
+
+        <div class="weather-forecast-header">
+            <h2>🌦️ 24-Hour Weather Forecast</h2>
+
+            <button
+                type="button"
+                class="weather-forecast-close"
+                onclick="closeFullDayWeatherForecast()"
+                aria-label="Close forecast"
+            >
+                ×
+            </button>
+        </div>
+
+        <div id="weatherForecastSummary" class="weather-forecast-summary">
+            Loading forecast...
+        </div>
+
+        <div class="weather-hour-row header">
+            <div>Time</div>
+            <div>Weather</div>
+            <div>Rain %</div>
+            <div class="extra-weather">Temp</div>
+            <div class="extra-weather">Wind</div>
+        </div>
+
+        <div id="weatherForecastRows"></div>
+
+    </div>
+</div>
+        <div class="card">
+            <h3>🚨 Disaster Alerts</h3>
+            <div id="alerts">
+                Loading official SACHET/NDMA alerts...
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🧠 Route Safety</h3>
+
+            <p>
+                <b>Risk Score:</b>
+                <span id="riskScore">--</span>
+            </p>
+
+            <p>
+                <b>Recommendation:</b>
+                <span id="recommendation">
+                    Waiting for route...
+                </span>
+            </p>
+        </div>
+
+    </aside>
+
+    <main class="map-container">
+
+        <div id="map"></div>
+
+        <div class="map-control">
+            <button id="fitNERBtn">📍 Focus NER</button>
+        </div>
+
+        <div class="legend" id="mapLegend">
+            <button
+                id="legendToggle"
+                class="legend-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="legendPanel"
+            >
+                🗺️ Legend
+            </button>
+
+            <div class="legend-panel" id="legendPanel">
+                <div class="legend-title-row">
+                    <div>
+                        <div><b>SIH-26002 Layers</b></div>
+                        <div class="mini">What the map symbols mean</div>
+                    </div>
+                    <button id="legendClose" class="legend-close" type="button" aria-label="Close legend">×</button>
+                </div>
+
+                <hr>
+
+                <div style="font-weight:800;margin-bottom:5px">Government alert severity</div>
+                <div class="legend-severity-row" id="legendSevereRow">
+                    <span class="dot" style="background:#dc2626"></span>
+                    Severe <span class="legend-count" id="legendSevereCount">N/A</span>
+                </div>
+                <div class="legend-severity-row" id="legendHighRow">
+                    <span class="dot" style="background:#ea580c"></span>
+                    High <span class="legend-count" id="legendHighCount">N/A</span>
+                </div>
+                <div class="legend-severity-row" id="legendModerateRow">
+                    <span class="dot" style="background:#eab308"></span>
+                    Moderate <span class="legend-count" id="legendModerateCount">N/A</span>
+                </div>
+                <div class="mini" id="legendAlertStatus" style="margin-top:5px">
+                    Live government alert feed: waiting for data…
+                </div>
+
+                <div style="margin-top:10px;font-weight:800">Forecast risk</div>
+                <div>
+                    <span class="legend-animated-dot" style="color:#6366f1;display:inline-block;width:10px;height:10px;border-radius:50%;background:currentColor;margin:0 8px 0 4px;position:relative"></span>
+                    Predicted hazard zone
+                </div>
+                <div class="mini" style="margin-top:4px">
+                    Purple = forecast-based hazard estimate.
+                </div>
+
+                <div style="margin-top:8px">
+                    <span class="legend-route-line"></span>
+                    Planned logistics route
+                </div>
+                <div class="mini" style="margin-top:4px">
+                    Red/orange/yellow = live government alert severity.
+                    Purple = forecast prediction.
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function initCompactLegend() {
+    const legend = document.getElementById("mapLegend");
+    const toggle = document.getElementById("legendToggle");
+    const close = document.getElementById("legendClose");
+
+    if (!legend || !toggle || !close) return;
+
+    function closeLegend() {
+        legend.classList.remove("open");
+        toggle.setAttribute("aria-expanded", "false");
+    }
+
+    function openLegend() {
+        legend.classList.add("open");
+        toggle.setAttribute("aria-expanded", "true");
+    }
+
+    toggle.addEventListener("click", () => {
+        if (legend.classList.contains("open")) closeLegend();
+        else openLegend();
+    });
+
+    close.addEventListener("click", closeLegend);
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeLegend();
+    });
+
+    // Clicking elsewhere on the map closes the expanded panel.
+    document.getElementById("map")?.addEventListener("click", (event) => {
+        if (!legend.contains(event.target)) closeLegend();
+    });
+})();
+</script>
+
+
+<script>
+
+const map = L.map("map").setView([25.5, 93.5], 6);
+
+L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+        attribution: "&copy; OpenStreetMap contributors"
+    }
+).addTo(map);
+
+
+let fromMarker = null;
+let destinationMarker = null;
+let routeLayer = null;
+let alertMarkers = [];
+let hazardAreaLayers = [];
+let hazardIconLayers = [];
+let hazardRouteLayers = [];
+let predictedHazardLayers = [];
+let predictedHazards = [];
+let routeLiveHazardLayers = [];
+let selectedRouteIndex = 0;
+
+let sachetAlerts = [];
+let routeCandidates = [];
+let lastRouteRisk = null;
+let lastWeatherRisk = 0;
+let lastAccessibility = 0;
+let currentWeather = null;
+let currentRainForecastLayers = [];
+let currentRainRefreshTimer = null;
+let currentDayWeatherForecast = null;
+// Live device location state
+let liveLocationWatchId = null;
+let currentLocationMarker = null;
+let currentLocationAccuracyCircle = null;
+let lastLivePosition = null;
+let usingLiveLocation = false;
+// ------------------------------------------------------
+// LIVE PRECIPITATION RADAR — RainViewer
+// ------------------------------------------------------
+let liveRadarLayers = [];
+let liveRadarTimer = null;
+let liveRadarRefreshTimer = null;
+let liveRadarFrames = [];
+let liveRadarFrameIndex = 0;
+
+
+// ------------------------------------------------------
+// STATUS
+// ------------------------------------------------------
+
+function setStatus(message) {
+
+    document.getElementById("status").innerHTML = message;
+
+}
+
+
+// ------------------------------------------------------
+// GEOCODING
+// ------------------------------------------------------
+
+async function geocode(place) {
+
+    const url =
+        "https://nominatim.openstreetmap.org/search" +
+        "?format=json" +
+        "&limit=1" +
+        "&countrycodes=in" +
+        "&q=" +
+        encodeURIComponent(place);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error("Geocoding failed");
+    }
+
+    const data = await response.json();
+
+    if (!data.length) {
+        throw new Error("Location not found: " + place);
+    }
+
+    return {
+        lat: parseFloat(data[0].lat),
+        lon: parseFloat(data[0].lon),
+        name: data[0].display_name
+    };
+}
+
+
+// ------------------------------------------------------
+// CURRENT LOCATION — LIVE DEVICE TRACKING
+// ------------------------------------------------------
+
+function createLiveLocationIcon(heading = 0) {
+    const safeHeading = Number.isFinite(heading) ? heading : 0;
+    return L.divIcon({
+        className: "live-location-icon",
+        html: `
+            <div class="live-location-marker" aria-label="Current device location">
+                <span class="pulse"></span>
+                <span class="arrow" style="transform:rotate(${safeHeading}deg)"></span>
+                <span class="dot"></span>
+            </div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -18]
+    });
+}
+
+function calculateBearing(a, b) {
+    if (!a || !b) return 0;
+    const toRad = d => d * Math.PI / 180;
+    const toDeg = r => (r * 180 / Math.PI + 360) % 360;
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) -
+              Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return toDeg(Math.atan2(y, x));
+}
+// ------------------------------------------------------
+// LIVE RAIN RADAR ANIMATION
+// Uses RainViewer observed radar frames.
+// This is separate from Open-Meteo forecast data.
+// ------------------------------------------------------
+
+function clearLiveRainRadar() {
+    if (liveRadarTimer) {
+        clearInterval(liveRadarTimer);
+        liveRadarTimer = null;
+    }
+
+    if (liveRadarRefreshTimer) {
+        clearTimeout(liveRadarRefreshTimer);
+        liveRadarRefreshTimer = null;
+    }
+
+    liveRadarLayers.forEach(layer => {
+        try {
+            if (map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+        } catch (_) {}
+    });
+
+    liveRadarLayers = [];
+    liveRadarFrames = [];
+    liveRadarFrameIndex = 0;
+}
+
+
+async function loadLiveRainRadar() {
+    try {
+        const response = await fetch(
+            "https://api.rainviewer.com/public/weather-maps.json",
+            {
+                cache: "no-store"
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "RainViewer radar request failed: " +
+                response.status
+            );
+        }
+
+        const data = await response.json();
+
+        const host = data?.host;
+        const pastFrames = Array.isArray(data?.radar?.past)
+            ? data.radar.past
+            : [];
+
+        if (!host || !pastFrames.length) {
+            throw new Error("No radar frames available");
+        }
+
+        clearLiveRainRadar();
+
+        // Use the latest 8 radar frames.
+        // RainViewer provides past radar frames at 10-minute intervals.
+        liveRadarFrames = pastFrames.slice(-8);
+
+        liveRadarFrames.forEach((frame, index) => {
+
+            if (!frame?.path) return;
+
+            const tileUrl =
+                `${host}${frame.path}` +
+                `/256/{z}/{x}/{y}/2/1_1.png`;
+
+            const layer = L.tileLayer(tileUrl, {
+                opacity: index === liveRadarFrames.length - 1 ? 0.65 : 0,
+                maxZoom: 19,
+                maxNativeZoom: 7,
+                tileSize: 256,
+                zIndex: 450,
+                updateWhenIdle: true,
+                updateWhenZooming: false,
+                attribution: "Weather radar by RainViewer"
+            });
+
+            layer.addTo(map);
+            liveRadarLayers.push(layer);
+        });
+
+        if (!liveRadarLayers.length) {
+            throw new Error("Radar layers could not be created");
+        }
+
+        // Animate radar frames.
+        liveRadarFrameIndex = liveRadarLayers.length - 1;
+
+        if (liveRadarLayers.length > 1) {
+            liveRadarTimer = setInterval(() => {
+
+                liveRadarLayers.forEach(layer => {
+                    try {
+                        layer.setOpacity(0);
+                    } catch (_) {}
+                });
+
+                liveRadarFrameIndex =
+                    (liveRadarFrameIndex + 1) %
+                    liveRadarLayers.length;
+
+                const activeLayer =
+                    liveRadarLayers[liveRadarFrameIndex];
+
+                if (activeLayer) {
+                    activeLayer.setOpacity(0.65);
+                }
+
+            }, 900);
+        }
+
+        console.log(
+            "✅ Live precipitation radar loaded:",
+            liveRadarFrames.length,
+            "frames"
+        );
+
+        setTimeout(() => {
+            if (liveRadarFrames.length) {
+                addRadarStatusControl();
+            }
+        }, 100);
+
+        // Refresh radar data periodically.
+        liveRadarRefreshTimer = setTimeout(
+            loadLiveRainRadar,
+            5 * 60 * 1000
+        );
+
+    } catch (error) {
+        console.warn(
+            "⚠️ Live rain radar unavailable:",
+            error
+        );
+
+        // Do NOT break weather intelligence if radar is unavailable.
+        liveRadarLayers = [];
+        liveRadarFrames = [];
+
+        addRadarUnavailableStatus();
+    }
+}
+
+
+// Small radar status indicator on the map.
+function addRadarStatusControl() {
+
+    const existing =
+        document.getElementById("liveRadarStatus");
+
+    if (existing) {
+        existing.remove();
+    }
+
+    const control = L.control({
+        position: "bottomleft"
+    });
+
+    control.onAdd = function () {
+
+        const div = L.DomUtil.create(
+            "div",
+            "live-radar-status"
+        );
+
+        div.id = "liveRadarStatus";
+
+        div.innerHTML = `
+            <div style="
+                background:rgba(255,255,255,.94);
+                padding:7px 10px;
+                border-radius:9px;
+                box-shadow:0 2px 10px rgba(0,0,0,.18);
+                font-size:11px;
+                line-height:1.35;
+                border:1px solid rgba(15,23,42,.12);
+            ">
+                <b>🌧️ LIVE PRECIPITATION RADAR</b><br>
+                <span style="color:#475569">
+                    Observed radar • animation ON
+                </span><br>
+                <span style="font-size:10px;color:#64748b">
+                    Source: RainViewer
+                </span>
+            </div>
+        `;
+
+        L.DomEvent.disableClickPropagation(div);
+
+        return div;
+    };
+
+    control.addTo(map);
+}
+
+
+function addRadarUnavailableStatus() {
+
+    const existing =
+        document.getElementById("liveRadarStatus");
+
+    if (existing) {
+        existing.remove();
+    }
+
+    const control = L.control({
+        position: "bottomleft"
+    });
+
+    control.onAdd = function () {
+
+        const div = L.DomUtil.create(
+            "div",
+            "live-radar-status"
+        );
+
+        div.id = "liveRadarStatus";
+
+        div.innerHTML = `
+            <div style="
+                background:rgba(255,255,255,.94);
+                padding:7px 10px;
+                border-radius:9px;
+                box-shadow:0 2px 10px rgba(0,0,0,.18);
+                font-size:11px;
+            ">
+                🌧️ <b>Radar temporarily unavailable</b><br>
+                <span style="font-size:10px;color:#64748b">
+                    Forecast weather intelligence remains active.
+                </span>
+            </div>
+        `;
+
+        return div;
+    };
+
+    control.addTo(map);
+}
+function updateLiveLocation(position, firstFix = false) {
+    const lat = position.coords.latitude;
+    const lon = position.coords.longitude;
+    const accuracy = Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : 0;
+    const gpsHeading = Number.isFinite(position.coords.heading) && position.coords.heading >= 0
+        ? position.coords.heading
+        : null;
+    const movementHeading = gpsHeading !== null
+        ? gpsHeading
+        : calculateBearing(lastLivePosition, { lat, lon });
+
+    lastLivePosition = { lat, lon };
+    usingLiveLocation = true;
+
+    // Keep the live marker independent from the normal START marker.
+    if (currentLocationMarker) {
+        currentLocationMarker.setLatLng([lat, lon]);
+        currentLocationMarker.setIcon(createLiveLocationIcon(movementHeading));
+    } else {
+        currentLocationMarker = L.marker([lat, lon], {
+            icon: createLiveLocationIcon(movementHeading),
+            zIndexOffset: 2000,
+            keyboard: false
+        }).addTo(map);
+        currentLocationMarker.bindPopup("<b>Current device location</b><br>Live GPS tracking is active.");
+    }
+
+    if (currentLocationAccuracyCircle) {
+        currentLocationAccuracyCircle.setLatLng([lat, lon]);
+        currentLocationAccuracyCircle.setRadius(Math.max(accuracy, 5));
+    } else {
+        currentLocationAccuracyCircle = L.circle([lat, lon], {
+            radius: Math.max(accuracy, 5),
+            color: "#2563eb",
+            weight: 1,
+            fillOpacity: 0.08,
+            interactive: false
+        }).addTo(map);
+    }
+
+    // Use the live GPS point as the route source.
+    const fromInput = document.getElementById("from");
+    fromInput.value = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    fromInput.dataset.lat = lat;
+    fromInput.dataset.lon = lon;
+    fromInput.dataset.displayName = "Current device location";
+
+if (firstFix) {
+    map.setView([lat, lon], 13);
+
+    // Load weather forecast for current location
+    loadWeather(lat, lon).catch(error => {
+        console.warn("Weather loading failed:", error);
+    });
+
+    // Load live observed precipitation radar
+    loadLiveRainRadar().catch(error => {
+        console.warn("Radar loading failed:", error);
+    });
+
+    setStatus(
+        "✅ Current location detected. " +
+        "Live weather + precipitation radar are ON."
+    );
+    } else {
+        setStatus("📍 Live location updated — device movement is being tracked.");
+    }
+}
+
+function stopLiveLocationWatch() {
+    if (liveLocationWatchId !== null) {
+        navigator.geolocation.clearWatch(liveLocationWatchId);
+        liveLocationWatchId = null;
+    }
+}
+
+async function startLiveLocation() {
+    if (!navigator.geolocation) {
+        setStatus("❌ This browser does not support device location.");
+        return;
+    }
+
+    if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+        setStatus("❌ Location requires HTTPS or localhost/127.0.0.1.");
+        return;
+    }
+
+    const button = document.getElementById("locationBtn");
+    button.disabled = true;
+    button.classList.add("active");
+    button.title = "Requesting your current location...";
+    button.setAttribute("aria-label", "Requesting your current location");
+    setStatus("📍 Requesting device GPS permission...");
+
+    stopLiveLocationWatch();
+    lastLivePosition = null;
+
+    liveLocationWatchId = navigator.geolocation.watchPosition(
+        position => {
+            const firstFix = !currentLocationMarker;
+            updateLiveLocation(position, firstFix);
+            button.disabled = false;
+            button.classList.add("active");
+            button.title = "Live location active — click to stop tracking";
+            button.setAttribute("aria-label", "Live location active — click to stop tracking");
+        },
+        error => {
+            button.disabled = false;
+            button.classList.remove("active");
+            button.title = "Use my current location";
+            button.setAttribute("aria-label", "Use my current location");
+
+            let message = "❌ Unable to access device location.";
+            if (error.code === error.PERMISSION_DENIED) {
+                message = "❌ Location permission is blocked. Allow Location for this site in Chrome, then click the button again.";
+            } else if (error.code === error.POSITION_UNAVAILABLE) {
+                message = "❌ Device location is unavailable. Turn on Windows Location Services/GPS and try again.";
+            } else if (error.code === error.TIMEOUT) {
+                message = "⏳ GPS timed out. Click the button again to retry.";
+            }
+            setStatus(message);
+        },
+        {
+            enableHighAccuracy: true,
+            maximumAge: 3000,
+            timeout: 15000
+        }
+    );
+}
+
+document.getElementById("locationBtn").addEventListener("click", () => {
+    const button = document.getElementById("locationBtn");
+    if (liveLocationWatchId !== null) {
+        stopLiveLocationWatch();
+        button.classList.remove("active");
+        button.title = "Use my current location";
+        button.setAttribute("aria-label", "Use my current location");
+        setStatus("⏹️ Live location tracking stopped.");
+        return;
+    }
+    startLiveLocation();
+});
+
+// WEATHER
+// Open-Meteo
+// ------------------------------------------------------
+// ------------------------------------------------------
+// CURRENT LOCATION RAIN FORECAST ANIMATION
+// ------------------------------------------------------
+function clearCurrentRainForecast() {
+    if (currentRainRefreshTimer) {
+        clearTimeout(currentRainRefreshTimer);
+        currentRainRefreshTimer = null;
+    }
+
+    currentRainForecastLayers.forEach(layer => {
+        try {
+            if (map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+        } catch (_) {}
+    });
+
+    currentRainForecastLayers = [];
+}
+
+// ==========================================================
+// RAIN DURATION ESTIMATION
+// ==========================================================
+
+function estimateCurrentRainDuration() {
+
+    const forecast = currentDayWeatherForecast;
+
+    if (!forecast || !forecast.hourly) {
+        return {
+            hours: 0,
+            startIndex: 0,
+            endIndex: 0
+        };
+    }
+
+    const hourly = forecast.hourly;
+
+    const probabilities =
+        hourly.precipitation_probability || [];
+
+    const precipitation =
+        hourly.precipitation || [];
+
+    const rain =
+        hourly.rain || [];
+
+    const showers =
+        hourly.showers || [];
+
+    const codes =
+        hourly.weather_code || [];
+
+    let currentIndex = 0;
+
+    if (
+        currentWeather &&
+        currentWeather.time &&
+        Array.isArray(hourly.time)
+    ) {
+        const currentTime =
+            new Date(currentWeather.time).getTime();
+
+        let smallestDifference = Infinity;
+
+        hourly.time.forEach((time, index) => {
+
+            const difference =
+                Math.abs(
+                    new Date(time).getTime() -
+                    currentTime
+                );
+
+            if (difference < smallestDifference) {
+                smallestDifference = difference;
+                currentIndex = index;
+            }
+        });
+    }
+
+    const rainCodes = [
+        51, 53, 55,
+        56, 57,
+        61, 63, 65,
+        66, 67,
+        80, 81, 82,
+        95, 96, 99
+    ];
+
+    let endIndex = currentIndex;
+
+    for (
+        let i = currentIndex;
+        i < Math.min(currentIndex + 24, probabilities.length);
+        i++
+    ) {
+
+        const probability =
+            Number(probabilities[i] ?? 0);
+
+        const precip =
+            Number(precipitation[i] ?? 0);
+
+        const rainAmount =
+            Number(rain[i] ?? 0);
+
+        const showerAmount =
+            Number(showers[i] ?? 0);
+
+        const code =
+            Number(codes[i] ?? -1);
+
+        const rainExpected =
+            probability >= 50 ||
+            precip >= 0.2 ||
+            rainAmount >= 0.2 ||
+            showerAmount >= 0.2 ||
+            rainCodes.includes(code);
+
+        if (rainExpected) {
+            endIndex = i;
+        } else if (i > currentIndex) {
+            // Stop after the first non-rain hour.
+            break;
+        }
+    }
+
+    const hours =
+        Math.max(0, endIndex - currentIndex + 1);
+
+    return {
+        hours,
+        startIndex: currentIndex,
+        endIndex
+    };
+}
+
+
+// ==========================================================
+// OPEN FULL-DAY WEATHER FORECAST
+// ==========================================================
+
+function openFullDayWeatherForecast() {
+
+    const modal =
+        document.getElementById("weatherForecastModal");
+
+    const rows =
+        document.getElementById("weatherForecastRows");
+
+    const summary =
+        document.getElementById("weatherForecastSummary");
+
+    if (!modal || !rows || !summary) {
+        return;
+    }
+
+    const forecast = currentDayWeatherForecast;
+
+    if (!forecast || !forecast.hourly) {
+
+        summary.innerHTML =
+            "❌ Full-day weather forecast is not available yet.";
+
+        rows.innerHTML = "";
+
+        modal.classList.add("open");
+
+        return;
+    }
+
+    const hourly = forecast.hourly;
+
+    const times =
+        hourly.time || [];
+
+    const temperatures =
+        hourly.temperature_2m || [];
+
+    const probabilities =
+        hourly.precipitation_probability || [];
+
+    const precipitation =
+        hourly.precipitation || [];
+
+    const winds =
+        hourly.wind_speed_10m || [];
+
+    const codes =
+        hourly.weather_code || [];
+
+    let currentIndex = 0;
+
+    if (currentWeather?.time) {
+
+        const currentTime =
+            new Date(currentWeather.time).getTime();
+
+        let smallestDifference = Infinity;
+
+        times.forEach((time, index) => {
+
+            const difference =
+                Math.abs(
+                    new Date(time).getTime() -
+                    currentTime
+                );
+
+            if (difference < smallestDifference) {
+                smallestDifference = difference;
+                currentIndex = index;
+            }
+
+        });
+    }
+
+    const endIndex =
+        Math.min(
+            currentIndex + 24,
+            times.length
+        );
+
+    const duration =
+        estimateCurrentRainDuration();
+
+    if (duration.hours > 0) {
+
+        summary.innerHTML = `
+            🌧️ <b>Rain outlook:</b>
+            Rain is currently expected for approximately
+            <b>${duration.hours} hour${duration.hours === 1 ? "" : "s"}</b>
+            based on consecutive hourly forecast conditions.
+            <br>
+            <small>
+                This is an estimate from Open-Meteo forecast data,
+                not a guaranteed rainfall duration.
+            </small>
+        `;
+
+    } else {
+
+        summary.innerHTML = `
+            🌤️ <b>No continuous rain window detected</b>
+            in the current 24-hour forecast.
+            <br>
+            <small>
+                Rain probability can still change during the day.
+            </small>
+        `;
+    }
+
+    rows.innerHTML = "";
+
+    for (
+        let i = currentIndex;
+        i < endIndex;
+        i++
+    ) {
+
+        const date =
+            new Date(times[i]);
+
+        const timeText =
+            date.toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit"
+            });
+
+        const probability =
+            Number(probabilities[i] ?? 0);
+
+        const temp =
+            Number(temperatures[i] ?? 0);
+
+        const precip =
+            Number(precipitation[i] ?? 0);
+
+        const wind =
+            Number(winds[i] ?? 0);
+
+        const code =
+            Number(codes[i] ?? -1);
+
+        const weatherText =
+            getWeatherDescription(code);
+
+        const rainClass =
+            probability >= 60
+                ? "weather-rain-high"
+                : "";
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "weather-hour-row";
+
+        row.innerHTML = `
+            <div>${timeText}</div>
+
+            <div>
+                ${weatherText}
+                <br>
+                <small>${precip.toFixed(1)} mm</small>
+            </div>
+
+            <div class="${rainClass}">
+                🌧️ ${Math.round(probability)}%
+            </div>
+
+            <div class="extra-weather">
+                ${temp.toFixed(1)}°C
+            </div>
+
+            <div class="extra-weather">
+                ${wind.toFixed(1)} km/h
+            </div>
+        `;
+
+        rows.appendChild(row);
+    }
+
+    modal.classList.add("open");
+}
+
+
+// ==========================================================
+// CLOSE FULL-DAY FORECAST
+// ==========================================================
+
+function closeFullDayWeatherForecast() {
+
+    const modal =
+        document.getElementById("weatherForecastModal");
+
+    if (modal) {
+        modal.classList.remove("open");
+    }
+}
+
+
+// ==========================================================
+// WEATHER CODE DESCRIPTION
+// ==========================================================
+
+function getWeatherDescription(code) {
+
+    const descriptions = {
+
+        0: "☀️ Clear",
+        1: "🌤️ Mainly clear",
+        2: "⛅ Partly cloudy",
+        3: "☁️ Overcast",
+
+        45: "🌫️ Fog",
+        48: "🌫️ Depositing rime fog",
+
+        51: "🌦️ Light drizzle",
+        53: "🌦️ Drizzle",
+        55: "🌧️ Heavy drizzle",
+
+        56: "🌧️ Freezing drizzle",
+        57: "🌧️ Heavy freezing drizzle",
+
+        61: "🌦️ Light rain",
+        63: "🌧️ Rain",
+        65: "🌧️ Heavy rain",
+
+        66: "🌧️ Freezing rain",
+        67: "🌧️ Heavy freezing rain",
+
+        71: "🌨️ Light snow",
+        73: "🌨️ Snow",
+        75: "❄️ Heavy snow",
+
+        77: "❄️ Snow grains",
+
+        80: "🌦️ Rain showers",
+        81: "🌧️ Rain showers",
+        82: "⛈️ Heavy rain showers",
+
+        85: "🌨️ Snow showers",
+        86: "❄️ Heavy snow showers",
+
+        95: "⛈️ Thunderstorm",
+        96: "⛈️ Thunderstorm + hail",
+        99: "⛈️ Severe thunderstorm"
+    };
+
+    return descriptions[code] || "🌦️ Weather";
+}
+function createCurrentRainForecastAnimation(
+    lat,
+    lon,
+    precipitationProbability,
+    precipitation,
+    weatherCode
+) {
+    clearCurrentRainForecast();
+
+    const probability =
+        Number(precipitationProbability || 0);
+
+    const currentPrecipitation =
+        Number(precipitation || 0);
+
+    const code =
+        Number(weatherCode ?? -1);
+
+    const rainWeatherCodes = [
+        51, 53, 55,
+        56, 57,
+        61, 63, 65,
+        66, 67,
+        80, 81, 82
+    ];
+
+    const shouldShowRain =
+        probability >= 50 ||
+        currentPrecipitation >= 0.2 ||
+        rainWeatherCodes.includes(code);
+
+    if (!shouldShowRain) {
+        return;
+    }
+
+    const radiusKm =
+        probability >= 80 ? 12 :
+        probability >= 60 ? 9 :
+        6;
+
+    const color =
+        probability >= 80
+            ? "#0284c7"
+            : "#38bdf8";
+
+
+    // --------------------------------------------------
+    // ANIMATED FORECAST RAIN AREA
+    // --------------------------------------------------
+
+    const area = L.circle([lat, lon], {
+        radius: radiusKm * 1000,
+        color: color,
+        weight: 3,
+        dashArray: "7 7",
+        fillColor: color,
+        fillOpacity: 0.10,
+        className: "predicted-hazard-area",
+        interactive: true
+    }).addTo(map);
+
+    area.bindPopup(`
+        <div style="min-width:245px">
+
+            <b>🌧️ Rain Forecast</b>
+
+            <span class="prediction-badge">
+                FORECAST PREDICTION
+            </span>
+
+            <br><br>
+
+            <b>Rain probability:</b>
+            ${Math.round(probability)}%
+
+            <br>
+
+            <b>Current precipitation:</b>
+            ${currentPrecipitation.toFixed(1)} mm
+
+            <br>
+
+            <b>Weather code:</b>
+            ${code}
+
+            <br><br>
+
+            <small>
+                Forecast-based weather information.
+                This is NOT a government warning.
+            </small>
+
+        </div>
+    `);
+
+    currentRainForecastLayers.push(area);
+
+
+    // --------------------------------------------------
+    // ANIMATED RAIN ICON
+    // --------------------------------------------------
+
+    const iconHtml = `
+        <div
+            class="hazard-icon predicted-hazard-icon"
+            title="Rain forecast"
+            style="
+                width:58px;
+                height:58px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+            "
+        >
+            ${hazardSvg("rain", color)}
+        </div>
+    `;
+
+    const marker = L.marker([lat, lon], {
+        icon: L.divIcon({
+            className: "",
+            html: iconHtml,
+            iconSize: [58, 58],
+            iconAnchor: [29, 29]
+        }),
+        zIndexOffset: 2200
+    }).addTo(map);
+const rainDuration = estimateCurrentRainDuration();
+
+const rainDurationText =
+    rainDuration.hours > 0
+        ? `~${rainDuration.hours} hour${rainDuration.hours === 1 ? "" : "s"}`
+        : "No continuous rain window detected";
+    marker.bindPopup(`
+    <div style="min-width:270px">
+
+        <b>🌧️ Rain Forecast</b>
+
+        <br>
+
+        <span class="prediction-badge">
+            FORECAST PREDICTION
+        </span>
+
+        <br><br>
+
+        <b>Rain probability:</b>
+        ${Math.round(probability)}%
+
+        <br>
+
+        <b>Current precipitation:</b>
+        ${currentPrecipitation.toFixed(1)} mm
+
+        <br>
+
+        <b>Estimated rain duration:</b>
+        ${rainDurationText}
+
+        <br><br>
+
+        <button
+            type="button"
+            style="
+                width:100%;
+                margin-top:8px;
+                padding:9px 10px;
+                border:0;
+                border-radius:8px;
+                background:#2563eb;
+                color:white;
+                font-weight:700;
+                cursor:pointer;
+            "
+            onclick="openFullDayWeatherForecast()"
+        >
+            📅 View Full-Day Forecast
+        </button>
+
+        <br>
+
+        <small style="
+            display:block;
+            margin-top:9px;
+            color:#64748b;
+        ">
+            Open-Meteo forecast-based information.
+            Duration is an estimate, not a guarantee.
+        </small>
+
+    </div>
+`);
+
+    currentRainForecastLayers.push(marker);
+
+
+    // --------------------------------------------------
+    // REFRESH FORECAST EVERY 10 MINUTES
+    // --------------------------------------------------
+
+    currentRainRefreshTimer = setTimeout(() => {
+
+        if (
+            usingLiveLocation &&
+            lastLivePosition
+        ) {
+            loadWeather(
+                lastLivePosition.lat,
+                lastLivePosition.lon
+            ).catch(error => {
+                console.warn(
+                    "Rain forecast refresh failed:",
+                    error
+                );
+            });
+        }
+
+    }, 10 * 60 * 1000);
+}
+
+
+// WEATHER
+// Open-Meteo
+// ------------------------------------------------------
+async function loadWeather(lat, lon) {
+
+    const weatherBox = document.getElementById("weather");
+
+    weatherBox.innerHTML =
+        "<h3>🌦️ Weather Intelligence</h3><p>Loading weather forecast...</p>";
+
+    try {
+
+        const url =
+            "https://api.open-meteo.com/v1/forecast" +
+            `?latitude=${encodeURIComponent(lat)}` +
+            `&longitude=${encodeURIComponent(lon)}` +
+            "&current=temperature_2m,relative_humidity_2m,precipitation,rain,showers,wind_speed_10m,weather_code" +
+            "&hourly=temperature_2m,relative_humidity_2m,precipitation,rain,showers,precipitation_probability,wind_speed_10m,visibility,weather_code" +
+            "&forecast_days=2" +
+            "&timezone=auto";
+
+        console.log("🌦️ Open-Meteo request:", url);
+
+        const response = await fetch(url, {
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                `Open-Meteo HTTP ${response.status}`
+            );
+        }
+
+        const data = await response.json();
+
+        console.log("🌦️ Open-Meteo response:", data);
+
+        if (!data.current || !data.hourly) {
+            throw new Error("Weather API returned incomplete data");
+        }
+
+       const current = data.current;
+const hourly = data.hourly;
+
+currentWeather = current;
+
+currentDayWeatherForecast = {
+    lat,
+    lon,
+    current,
+    hourly,
+    timezone: data.timezone || "auto"
+};
+
+        // --------------------------------------------------
+        // FIND CURRENT HOURLY FORECAST
+        // --------------------------------------------------
+
+        const currentTime =
+            new Date(current.time).getTime();
+
+        let currentHourIndex = 0;
+
+        if (Array.isArray(hourly.time)) {
+
+            let smallestDifference = Infinity;
+
+            hourly.time.forEach((time, index) => {
+
+                const difference =
+                    Math.abs(
+                        new Date(time).getTime() -
+                        currentTime
+                    );
+
+                if (difference < smallestDifference) {
+                    smallestDifference = difference;
+                    currentHourIndex = index;
+                }
+
+            });
+        }
+
+        // --------------------------------------------------
+        // REAL FORECAST VALUES
+        // --------------------------------------------------
+
+        const precipitationProbability =
+            Number(
+                hourly.precipitation_probability?.[
+                    currentHourIndex
+                ] ?? 0
+            );
+
+        const forecastPrecipitation =
+            Number(
+                hourly.precipitation?.[
+                    currentHourIndex
+                ] ?? current.precipitation ?? 0
+            );
+
+        const forecastRain =
+            Number(
+                hourly.rain?.[
+                    currentHourIndex
+                ] ?? current.rain ?? 0
+            );
+
+        const forecastShowers =
+            Number(
+                hourly.showers?.[
+                    currentHourIndex
+                ] ?? current.showers ?? 0
+            );
+
+        const forecastWind =
+            Number(
+                hourly.wind_speed_10m?.[
+                    currentHourIndex
+                ] ?? current.wind_speed_10m ?? 0
+            );
+
+        const forecastVisibility =
+            Number(
+                hourly.visibility?.[
+                    currentHourIndex
+                ] ?? 99999
+            );
+
+        const forecastCode =
+            Number(
+                hourly.weather_code?.[
+                    currentHourIndex
+                ] ?? current.weather_code ?? -1
+            );
+
+        // --------------------------------------------------
+        // NEXT 6 HOURS MAX RAIN PROBABILITY
+        // --------------------------------------------------
+
+        const startIndex =
+            currentHourIndex;
+
+        const endIndex =
+            Math.min(
+                hourly.time.length,
+                startIndex + 6
+            );
+
+        const nextSixHourProbabilities =
+            (hourly.precipitation_probability || [])
+                .slice(startIndex, endIndex)
+                .map(Number)
+                .filter(Number.isFinite);
+
+        const next6HourRainProbability =
+            nextSixHourProbabilities.length
+                ? Math.max(...nextSixHourProbabilities)
+                : precipitationProbability;
+
+        // --------------------------------------------------
+        // FORECAST WEATHER RISK
+        // --------------------------------------------------
+
+        let weatherRiskScore = 0;
+
+        // Rain probability
+        if (next6HourRainProbability >= 80) {
+            weatherRiskScore += 40;
+        } else if (next6HourRainProbability >= 60) {
+            weatherRiskScore += 30;
+        } else if (next6HourRainProbability >= 40) {
+            weatherRiskScore += 18;
+        } else if (next6HourRainProbability >= 20) {
+            weatherRiskScore += 8;
+        }
+
+        // Actual precipitation
+        if (forecastPrecipitation >= 20) {
+            weatherRiskScore += 30;
+        } else if (forecastPrecipitation >= 10) {
+            weatherRiskScore += 18;
+        } else if (forecastPrecipitation >= 5) {
+            weatherRiskScore += 8;
+        }
+
+        // Wind
+        if (forecastWind >= 60) {
+            weatherRiskScore += 25;
+        } else if (forecastWind >= 40) {
+            weatherRiskScore += 15;
+        } else if (forecastWind >= 25) {
+            weatherRiskScore += 7;
+        }
+
+        // Thunderstorm WMO codes
+        if ([95, 96, 99].includes(forecastCode)) {
+            weatherRiskScore += 25;
+        }
+
+        weatherRiskScore =
+            Math.min(
+                Math.round(weatherRiskScore),
+                100
+            );
+
+        lastWeatherRisk = weatherRiskScore;
+
+        // --------------------------------------------------
+        // STORE FORECAST DATA
+        // --------------------------------------------------
+
+        currentWeather = {
+            ...current,
+
+            precipitation_probability:
+                precipitationProbability,
+
+            next6HourRainProbability:
+                next6HourRainProbability,
+
+            forecast_precipitation:
+                forecastPrecipitation,
+
+            forecast_rain:
+                forecastRain,
+
+            forecast_showers:
+                forecastShowers,
+
+            forecast_wind:
+                forecastWind,
+
+            forecast_visibility:
+                forecastVisibility,
+
+            forecast_weather_code:
+                forecastCode
+        };
+// --------------------------------------------------
+// CURRENT LOCATION RAIN FORECAST VISUALIZATION
+// --------------------------------------------------
+
+const isCurrentLocation =
+    usingLiveLocation &&
+    lastLivePosition &&
+    Math.abs(lastLivePosition.lat - lat) < 0.001 &&
+    Math.abs(lastLivePosition.lon - lon) < 0.001;
+
+if (isCurrentLocation) {
+    createCurrentRainForecastAnimation(
+        lat,
+        lon,
+        precipitationProbability,
+        forecastPrecipitation,
+        forecastCode
+    );
+}
+        // --------------------------------------------------
+        // UPDATE WEATHER RISK
+        // --------------------------------------------------
+
+        const weatherRiskElement =
+            document.getElementById("weatherRisk");
+
+        if (weatherRiskElement) {
+            weatherRiskElement.textContent =
+                weatherRiskScore + "/100";
+        }
+
+        // --------------------------------------------------
+        // WEATHER STATUS
+        // --------------------------------------------------
+
+        let rainStatus = "Low";
+
+        if (next6HourRainProbability >= 80) {
+            rainStatus = "Very High";
+        } else if (next6HourRainProbability >= 60) {
+            rainStatus = "High";
+        } else if (next6HourRainProbability >= 40) {
+            rainStatus = "Moderate";
+        }
+
+        // --------------------------------------------------
+        // WEATHER UI
+        // --------------------------------------------------
+
+        weatherBox.innerHTML = `
+
+            <h3>🌦️ Weather Intelligence</h3>
+
+            <p>
+                🌡️ Temperature:
+                <b>${Number(current.temperature_2m).toFixed(1)}°C</b>
+            </p>
+
+            <p>
+                💧 Humidity:
+                <b>${Number(current.relative_humidity_2m).toFixed(0)}%</b>
+            </p>
+
+            <p>
+                🌧️ Precipitation:
+                <b>${Number(current.precipitation ?? 0).toFixed(1)} mm</b>
+            </p>
+
+            <p>
+                🌧️ Rain Probability:
+                <b>${Math.round(precipitationProbability)}%</b>
+            </p>
+
+            <p>
+                ⏱️ Next 6h Rain Probability:
+                <b>${Math.round(next6HourRainProbability)}%</b>
+            </p>
+
+            <p>
+                💨 Wind:
+                <b>${Number(current.wind_speed_10m).toFixed(1)} km/h</b>
+            </p>
+
+            <p>
+                ⚠️ Weather Risk:
+                <b>${weatherRiskScore}/100</b>
+            </p>
+
+            <p class="mini">
+                Rain probability: <b>${rainStatus}</b>.
+                Forecast data is from Open-Meteo.
+            </p>
+
+        `;
+
+        console.log(
+            "🌧️ Rain probability:",
+            precipitationProbability + "%"
+        );
+
+        console.log(
+            "🌧️ Next 6h maximum:",
+            next6HourRainProbability + "%"
+        );
+
+        console.log(
+            "⚠️ Weather risk:",
+            weatherRiskScore
+        );
+
+    } catch (error) {
+
+        console.error(
+            "❌ Weather loading failed:",
+            error
+        );
+
+        lastWeatherRisk = 0;
+
+        const weatherRiskElement =
+            document.getElementById("weatherRisk");
+
+        if (weatherRiskElement) {
+            weatherRiskElement.textContent = "--";
+        }
+
+        weatherBox.innerHTML = `
+            <h3>🌦️ Weather Intelligence</h3>
+
+            <p>
+                ❌ Weather data temporarily unavailable.
+            </p>
+
+            <p class="mini">
+                Open-Meteo request failed.
+                Check browser console for details.
+            </p>
+        `;
+    }
+}
+
+
+function calculateWeatherRisk(weather) {
+
+    let risk = 0;
+
+    const rain = Number(weather.precipitation || 0);
+    const wind = Number(weather.wind_speed_10m || 0);
+    const humidity = Number(weather.relative_humidity_2m || 0);
+
+    if (rain >= 50) risk += 50;
+    else if (rain >= 20) risk += 30;
+    else if (rain >= 5) risk += 15;
+
+    if (wind >= 60) risk += 35;
+    else if (wind >= 40) risk += 20;
+    else if (wind >= 25) risk += 10;
+
+    if (humidity >= 90) risk += 10;
+
+    return Math.min(Math.round(risk), 100);
+}
+
+
+
+// ------------------------------------------------------
+// GOVERNMENT DISASTER ALERTS
+// ------------------------------------------------------
+
+function updateAlertLegend() {
+
+    const counts = { Severe: 0, High: 0, Moderate: 0 };
+
+    const alerts = Array.isArray(sachetAlerts)
+        ? sachetAlerts
+        : [];
+
+    alerts.forEach(alert => {
+        const label = severityMeta(alert).label;
+        if (counts[label] !== undefined) counts[label]++;
+    });
+
+    const feedAvailable = Array.isArray(sachetAlerts);
+
+    const status = document.getElementById("legendAlertStatus");
+    const severe = document.getElementById("legendSevereCount");
+    const high = document.getElementById("legendHighCount");
+    const moderate = document.getElementById("legendModerateCount");
+
+    if (!status || !severe || !high || !moderate) return;
+
+    if (feedAvailable) {
+
+        severe.textContent = counts.Severe;
+        high.textContent = counts.High;
+        moderate.textContent = counts.Moderate;
+
+        const total =
+            counts.Severe +
+            counts.High +
+            counts.Moderate;
+
+        status.textContent = total > 0
+            ? "Government alerts loaded. Only alerts with spatial evidence are used for route intersection."
+            : "No government alerts are currently available in the received feed.";
+
+    } else {
+
+        severe.textContent = "N/A";
+        high.textContent = "N/A";
+        moderate.textContent = "N/A";
+
+        status.textContent =
+            "Government alert feed is unavailable right now.";
+    }
+
+    [
+        ["legendSevereRow", counts.Severe],
+        ["legendHighRow", counts.High],
+        ["legendModerateRow", counts.Moderate]
+    ].forEach(([id, count]) => {
+
+        const row = document.getElementById(id);
+
+        if (row) {
+            row.classList.toggle(
+                "inactive",
+                feedAvailable && count === 0
+            );
+        }
+    });
+}
+
+async function loadSachetAlerts() {
+
+    const alertBox = document.getElementById("alerts");
+    const countBox = document.getElementById("activeAlertCount");
+
+    alertBox.innerHTML = `
+        <div class="alert yellow">
+            🔄 Connecting to the official NDMA/SACHET alert service...
+        </div>
+    `;
+
+    try {
+        console.log("[SACHET] GET /api/sachet");
+
+        const response = await fetch(
+    "/api/sachet?t=" + Date.now(),
+    {
+        method: "GET",
+        cache: "no-store",
+        headers: { "Accept": "application/json" }
+    }
+);
+
+        const rawText = await response.text();
+
+        console.log(
+            "[SACHET] HTTP",
+            response.status,
+            rawText.slice(0, 1000)
+        );
+
+        let raw;
+        try {
+            raw = JSON.parse(rawText);
+        } catch (_) {
+            throw new Error(
+                `Backend returned non-JSON data (HTTP ${response.status}). ` +
+                rawText.slice(0, 250)
+            );
+        }
+
+        if (!response.ok) {
+            throw new Error(
+                raw?.error ||
+                raw?.message ||
+                `Backend returned HTTP ${response.status}`
+            );
+        }
+
+       let alerts = [];
+
+if (Array.isArray(raw)) {
+    alerts = raw;
+} else if (raw && Array.isArray(raw.alerts)) {
+    alerts = raw.alerts;
+} else if (raw && Array.isArray(raw.data)) {
+    alerts = raw.data;
+}
+
+if (!alerts.length) {
+    throw new Error(
+        "SACHET returned valid JSON, but no alerts were found."
+    );
+}
+
+        sachetAlerts = alerts;
+
+        if (countBox) {
+            countBox.textContent = alerts.length;
+        }
+
+        displaySachetAlerts();
+        updateAlertLegend();
+
+        if (raw.stale === true) {
+
+            const lastUpdated =
+                raw.lastSuccessfulFetch ||
+                raw.fetchedAt ||
+                raw.cachedAt ||
+                "previous successful fetch";
+
+            alertBox.insertAdjacentHTML(
+                "afterbegin",
+                `
+                <div class="alert orange">
+                    <b>⚠️ SACHET live feed temporarily unavailable</b>
+                    <br><br>
+                    Showing the last successful government snapshot.
+                    <br>
+                    <small>
+                        Last successful update:
+                        ${escapeHTML(lastUpdated)}
+                    </small>
+                </div>
+                `
+            );
+
+        } else if (raw.live !== false) {
+
+            console.log(
+                `[SACHET] Live government alerts loaded: ${alerts.length}`
+            );
+        }
+
+    } catch (error) {
+
+        console.error("[SACHET] Frontend error:", error);
+
+        sachetAlerts = null;
+
+        if (countBox) {
+            countBox.textContent = "N/A";
+        }
+
+        updateAlertLegend();
+
+        alertBox.innerHTML = `
+            <div class="alert orange">
+                <b>⚠️ Government disaster alert service unavailable</b>
+                <br><br>
+                <b>Actual backend reason:</b>
+                <br>
+                ${escapeHTML(error?.message || "Unknown error")}
+                <br><br>
+                <small>
+                    Frontend endpoint: <b>/api/sachet</b>.
+                    Live government data can only be shown when the backend
+                    can reach the official SACHET/NDMA service.
+                </small>
+            </div>
+        `;
+    }
+}
+
+
+// ------------------------------------------------------
+// DISPLAY GOVERNMENT DISASTER ALERTS
+// ------------------------------------------------------
+
+function clearHazardLayers() {
+    [...hazardAreaLayers, ...hazardIconLayers, ...hazardRouteLayers].forEach(layer => {
+        try { map.removeLayer(layer); } catch (_) {}
+    });
+    hazardAreaLayers = [];
+    hazardIconLayers = [];
+    hazardRouteLayers = [];
+}
+
+function hazardType(alert) {
+    return String(alert.disaster_type || alert.disasterType || alert.event || alert.title || "alert").toLowerCase();
+}
+
+function hazardKind(alert) {
+    const t = hazardType(alert);
+    if (t.includes("rain") || t.includes("precip") || t.includes("downpour")) return "rain";
+    if (t.includes("thunder") || t.includes("lightning")) return "thunder";
+    if (t.includes("snow") || t.includes("blizzard")) return "snow";
+    if (t.includes("landslide") || t.includes("land slide")) return "landslide";
+    if (t.includes("road") || t.includes("traffic") || t.includes("block")) return "roadblock";
+    if (t.includes("flood") || t.includes("waterlogging")) return "flood";
+    if (t.includes("earthquake") || t.includes("seismic")) return "earthquake";
+    if (t.includes("tsunami") || t.includes("storm surge")) return "tsunami";
+    if (t.includes("cyclone") || t.includes("hurricane")) return "cyclone";
+    if (t.includes("fog") || t.includes("visibility")) return "fog";
+    if (t.includes("fire")) return "fire";
+    return "generic";
+}
+
+function severityMeta(alert) {
+    const s = String(alert.severity_color || alert.severity_level || alert.severity || "yellow").toLowerCase();
+    if (s.includes("red") || s.includes("severe") || s.includes("extreme")) return { color: "#dc2626", label: "Severe" };
+    if (s.includes("orange") || s.includes("high")) return { color: "#ea580c", label: "High" };
+    return { color: "#eab308", label: "Moderate" };
+}
+
+function parseCentroid(alert) {
+
+    if (!alert) return null;
+
+    const value = alert.centroid;
+
+    if (value && typeof value === "object") {
+
+        const lat = Number(value.lat ?? value.latitude);
+        const lon = Number(value.lon ?? value.lng ?? value.longitude);
+
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            return [lat, lon];
+        }
+    }
+
+    if (typeof value === "string") {
+
+        const parts = value.split(",").map(Number);
+
+        if (
+            parts.length === 2 &&
+            Number.isFinite(parts[0]) &&
+            Number.isFinite(parts[1])
+        ) {
+            // Backend CAP centroid is lon,lat.
+            return [parts[1], parts[0]];
+        }
+    }
+
+    const polygon = parsePolygon(alert);
+
+    if (polygon?.length) {
+
+        const lat =
+            polygon.reduce((sum, p) => sum + Number(p[0]), 0) /
+            polygon.length;
+
+        const lon =
+            polygon.reduce((sum, p) => sum + Number(p[1]), 0) /
+            polygon.length;
+
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            return [lat, lon];
+        }
+    }
+
+    return null;
+}
+
+function parsePolygon(alert) {
+
+    const raw =
+        alert?.polygon ??
+        alert?.polygon_coordinates ??
+        alert?.polygonCoordinates ??
+        alert?.area_polygon;
+
+    if (!raw) return null;
+
+    let points = raw;
+
+    if (typeof raw === "string") {
+
+        try {
+            points = JSON.parse(raw);
+        } catch (_) {
+
+            points = raw
+                .trim()
+                .split(/\s+/)
+                .map(pair => {
+                    const parts = pair.split(",").map(Number);
+
+                    if (
+                        parts.length !== 2 ||
+                        !Number.isFinite(parts[0]) ||
+                        !Number.isFinite(parts[1])
+                    ) {
+                        return null;
+                    }
+
+                    // CAP polygon order: latitude,longitude.
+                    return [Number(parts[0]), Number(parts[1])];
+                })
+                .filter(Boolean);
+        }
+    }
+
+    if (!Array.isArray(points) || points.length < 3) {
+        return null;
+    }
+
+    const normalized = points.map(p => {
+
+        if (Array.isArray(p)) {
+
+            const lat = Number(p[0]);
+            const lon = Number(p[1]);
+
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                return null;
+            }
+
+            return [lat, lon];
+        }
+
+        if (p && typeof p === "object") {
+
+            const lat = Number(p.lat ?? p.latitude);
+            const lon = Number(p.lon ?? p.lng ?? p.longitude);
+
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+                return [lat, lon];
+            }
+        }
+
+        return null;
+
+    }).filter(Boolean);
+
+    return normalized.length >= 3
+        ? normalized
+        : null;
+}
+
+function visualRadiusKm(alert, kind) {
+
+    if (!alert) return null;
+
+    const circle = alert.circle;
+
+    if (circle && typeof circle === "object") {
+
+        const radiusM = Number(
+            circle.radiusM ??
+            circle.radius_m ??
+            circle.radius
+        );
+
+        if (Number.isFinite(radiusM) && radiusM > 0) {
+            return radiusM / 1000;
+        }
+
+        const radiusKm = Number(
+            circle.radiusKm ??
+            circle.radius_km
+        );
+
+        if (Number.isFinite(radiusKm) && radiusKm > 0) {
+            return radiusKm;
+        }
+    }
+
+    const radiusM = Number(
+        alert.radius_m ??
+        alert.radiusM
+    );
+
+    if (Number.isFinite(radiusM) && radiusM > 0) {
+        return radiusM / 1000;
+    }
+
+    const radiusKm = Number(
+        alert.radius_km ??
+        alert.radiusKm
+    );
+
+    if (Number.isFinite(radiusKm) && radiusKm > 0) {
+        return radiusKm;
+    }
+
+    // Only accept legacy "radius" when the backend explicitly says km.
+    if (
+        alert.radiusUnit === "km" &&
+        Number.isFinite(Number(alert.radius)) &&
+        Number(alert.radius) > 0
+    ) {
+        return Number(alert.radius);
+    }
+
+    return null;
+}
+
+function hazardSvg(kind, color) {
+    const stroke = color;
+    const common = `stroke="${stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+    if (kind === "rain") return `<svg viewBox="0 0 64 64"><g class="hazard-pulse"><circle cx="32" cy="32" r="25" fill="${color}" opacity=".12"/><path d="M18 35h28c5 0 8-3 8-7s-3-8-8-8c-2-7-8-10-14-8-5 1-8 5-9 9-5 0-9 3-9 8s4 6 4 6z" fill="#dbeafe" stroke="${color}" stroke-width="2"/></g><g class="hazard-rain" ${common}><path d="M22 43l-3 7M32 43l-3 7M42 43l-3 7"/></g></svg>`;
+    if (kind === "thunder") return `<svg viewBox="0 0 64 64"><path d="M17 34h29c5 0 8-3 8-7s-3-8-8-8c-2-7-8-10-14-8-5 1-8 5-9 9-5 0-9 3-9 8s4 6 4 6z" fill="#cbd5e1" stroke="${color}" stroke-width="2"/><path class="hazard-flash" d="M34 35l-8 13h8l-3 11 12-17h-8l5-7z" fill="#facc15" stroke="#92400e" stroke-width="1"/></svg>`;
+    if (kind === "snow") return `<svg viewBox="0 0 64 64"><g class="hazard-pulse"><circle cx="32" cy="32" r="25" fill="#dbeafe" opacity=".5"/></g><g class="hazard-snow" stroke="#2563eb" stroke-width="2" stroke-linecap="round"><path d="M22 21v12M17 27h10M19 23l7 8M26 23l-7 8M39 22v12M34 28h10M36 24l7 8M43 24l-7 8"/><circle cx="25" cy="43" r="3" fill="#fff"/><circle cx="41" cy="47" r="3" fill="#fff"/></g></svg>`;
+    if (kind === "landslide") return `<svg viewBox="0 0 64 64"><path d="M8 48l20-30 28 30z" fill="#a16207" opacity=".9"/><path d="M8 48h48" stroke="${color}" stroke-width="3"/><g class="hazard-rock"><path d="M29 23l4-4 5 3-2 6-6 1z" fill="#57534e"/></g><g class="hazard-rock" style="animation-delay:.35s"><path d="M42 28l4-3 4 4-3 5-5-1z" fill="#78716c"/></g></svg>`;
+    if (kind === "roadblock") return `<svg viewBox="0 0 64 64"><circle class="hazard-pulse" cx="32" cy="32" r="24" fill="${color}" opacity=".12"/><path d="M12 46h40" stroke="#374151" stroke-width="4"/><path d="M18 43V22M46 43V22" stroke="#374151" stroke-width="4"/><path d="M16 25l32 14" stroke="#dc2626" stroke-width="7"/><path d="M16 25l32 14" stroke="#fff" stroke-width="2" stroke-dasharray="6 6"/></svg>`;
+    if (kind === "flood") return `<svg viewBox="0 0 64 64"><g class="hazard-wave"><circle cx="32" cy="32" r="16" fill="none" stroke="${color}" stroke-width="3"/></g><path d="M8 39c6-7 12 7 18 0s12 7 18 0 12 7 20 0M8 48c6-7 12 7 18 0s12 7 18 0 12 7 20 0" stroke="#0ea5e9" stroke-width="4" fill="none"/></svg>`;
+    if (kind === "earthquake") return `<svg viewBox="0 0 64 64"><circle class="hazard-wave" cx="32" cy="32" r="9" fill="none" stroke="${color}" stroke-width="3"/><circle class="hazard-wave" style="animation-delay:.65s" cx="32" cy="32" r="16" fill="none" stroke="${color}" stroke-width="2"/><path class="hazard-shake" d="M12 37l8-8 7 8 8-14 8 9 9-7" stroke="${color}" stroke-width="4" fill="none"/></svg>`;
+    if (kind === "tsunami") return `<svg viewBox="0 0 64 64"><g class="hazard-wave"><path d="M7 40c8-18 18-18 25-4 7-15 18-16 25 4" fill="none" stroke="${color}" stroke-width="4"/></g><path d="M8 48c8-6 16 6 24 0s16 6 24 0" stroke="#0ea5e9" stroke-width="4" fill="none"/></svg>`;
+    if (kind === "cyclone") return `<svg viewBox="0 0 64 64"><g class="hazard-rotate"><path d="M10 31c5-18 37-21 44-4 5 12-7 25-22 23-13-2-18-14-9-22 8-7 21-4 23 4" stroke="${color}" stroke-width="4" fill="none"/><circle cx="32" cy="32" r="4" fill="${color}"/></g></svg>`;
+    if (kind === "fog") return `<svg viewBox="0 0 64 64"><g class="hazard-fog" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"><path d="M10 25h44M6 33h52M12 41h40"/></g></svg>`;
+    if (kind === "fire") return `<svg viewBox="0 0 64 64"><path class="hazard-fire" d="M32 56c-11 0-17-8-13-17 2-5 7-8 8-16 9 6 15 12 12 20 4-2 6-6 6-10 9 12 5 23-13 23z" fill="#f97316" stroke="${color}" stroke-width="2"/><path d="M32 51c-5-1-7-5-5-9 1-3 4-4 5-8 5 4 7 8 5 12 2 0 3-2 3-4 4 6 1 10-8 9z" fill="#fde68a"/></svg>`;
+    return `<svg viewBox="0 0 64 64"><circle class="hazard-pulse" cx="32" cy="32" r="24" fill="${color}" opacity=".16"/><circle cx="32" cy="32" r="16" fill="${color}"/><path d="M32 23v13M32 42h.01" stroke="#fff" stroke-width="4" stroke-linecap="round"/></svg>`;
+}
+
+function createHazardIcon(alert, lat, lon) {
+    const kind = hazardKind(alert);
+    const meta = severityMeta(alert);
+    const name = alert.disaster_type || alert.event || "Government Disaster Alert";
+    const html = `<div class="hazard-icon" title="${escapeHTML(name)}">${hazardSvg(kind, meta.color)}</div>`;
+    const marker = L.marker([lat, lon], {
+        icon: L.divIcon({ className: "", html, iconSize: [58, 58], iconAnchor: [29, 29] }),
+        zIndexOffset: 900
+    }).addTo(map);
+    marker.bindPopup(`
+        <div style="min-width:220px">
+            <b>${escapeHTML(name)}</b><br>
+            <span style="color:${meta.color};font-weight:bold">${meta.label}</span><br>
+            ${escapeHTML(alert.area_description || alert.areaDescription || "Affected area unavailable")}<br>
+            <small>Live government alert visualization</small>
+        </div>
+    `);
+    hazardIconLayers.push(marker);
+    return marker;
+}
+
+function addHazardArea(alert, center) {
+    const kind = hazardKind(alert);
+    const meta = severityMeta(alert);
+    const polygon = parsePolygon(alert);
+    let area;
+    let radius = null;
+
+    if (polygon) {
+        area = L.polygon(polygon, {
+            color: meta.color,
+            weight: 2,
+            fillColor: meta.color,
+            fillOpacity: .15,
+            className: "hazard-area"
+        }).addTo(map);
+    } else if (center) {
+        radius = visualRadiusKm(alert, kind);
+        if (Number.isFinite(radius)) {
+            area = L.circle(center, {
+                radius: radius * 1000,
+                color: meta.color,
+                weight: 2,
+                dashArray: "8 7",
+                fillColor: meta.color,
+                fillOpacity: .13,
+                className: "hazard-area"
+            }).addTo(map);
+        }
+    }
+    if (!area) return null;
+    area.bindPopup(`
+        <div style="min-width:240px">
+            <b>${escapeHTML(alert.disaster_type || alert.event || "Government Disaster Alert")}</b><br>
+            <span style="color:${meta.color};font-weight:bold">${meta.label}</span><br>
+            ${escapeHTML(alert.area_description || alert.areaDescription || "Affected area")}
+            ${polygon ? "<br><small>Area boundary supplied by the alert geometry.</small>" : (Number.isFinite(radius) ? `<br><small>Radius supplied by the alert feed: ${radius} km.</small>` : "")}
+        </div>
+    `);
+    hazardAreaLayers.push(area);
+    return { layer: area, radiusKm: radius, polygon };
+}
+
+
+function clearRouteLiveHazards() {
+    routeLiveHazardLayers.forEach(layer => { try { map.removeLayer(layer); } catch (_) {} });
+    routeLiveHazardLayers = [];
+}
+
+function orientation(a, b, c) {
+
+    const value =
+        (b[0] - a[0]) * (c[1] - a[1]) -
+        (b[1] - a[1]) * (c[0] - a[0]);
+
+    if (Math.abs(value) < 1e-12) return 0;
+    return value > 0 ? 1 : 2;
+}
+
+function onSegment(a, b, p) {
+
+    return (
+        p[0] >= Math.min(a[0], b[0]) - 1e-10 &&
+        p[0] <= Math.max(a[0], b[0]) + 1e-10 &&
+        p[1] >= Math.min(a[1], b[1]) - 1e-10 &&
+        p[1] <= Math.max(a[1], b[1]) + 1e-10
+    );
+}
+
+function segmentsIntersect(a, b, c, d) {
+
+    const o1 = orientation(a, b, c);
+    const o2 = orientation(a, b, d);
+    const o3 = orientation(c, d, a);
+    const o4 = orientation(c, d, b);
+
+    if (o1 !== o2 && o3 !== o4) return true;
+
+    if (o1 === 0 && onSegment(a, b, c)) return true;
+    if (o2 === 0 && onSegment(a, b, d)) return true;
+    if (o3 === 0 && onSegment(c, d, a)) return true;
+    if (o4 === 0 && onSegment(c, d, b)) return true;
+
+    return false;
+}
+
+function polygonContainsPointLatLon(lat, lon, polygon) {
+
+    if (!polygon || polygon.length < 3) return false;
+
+    let inside = false;
+
+    for (
+        let i = 0, j = polygon.length - 1;
+        i < polygon.length;
+        j = i++
+    ) {
+
+        const yi = Number(polygon[i][0]);
+        const xi = Number(polygon[i][1]);
+
+        const yj = Number(polygon[j][0]);
+        const xj = Number(polygon[j][1]);
+
+        const intersects =
+            ((yi > lat) !== (yj > lat)) &&
+            (
+                lon <
+                ((xj - xi) * (lat - yi)) /
+                ((yj - yi) || 1e-15) +
+                xi
+            );
+
+        if (intersects) inside = !inside;
+    }
+
+    return inside;
+}
+
+function routeIntersectsPolygon(coords, polygon) {
+
+    if (
+        !Array.isArray(coords) ||
+        coords.length < 2 ||
+        !Array.isArray(polygon) ||
+        polygon.length < 3
+    ) {
+        return null;
+    }
+
+    const step =
+        Math.max(1, Math.floor(coords.length / 500));
+
+    const samples = [];
+
+    for (
+        let i = 0;
+        i < coords.length;
+        i += step
+    ) {
+        samples.push(coords[i]);
+    }
+
+    const last = coords[coords.length - 1];
+
+    if (
+        !samples.length ||
+        samples[samples.length - 1] !== last
+    ) {
+        samples.push(last);
+    }
+
+    for (const p of samples) {
+
+        if (
+            Array.isArray(p) &&
+            polygonContainsPointLatLon(
+                Number(p[1]),
+                Number(p[0]),
+                polygon
+            )
+        ) {
+            return {
+                lat: Number(p[1]),
+                lon: Number(p[0]),
+                distanceKm: 0,
+                spatialEvidence:
+                    "CAP polygon contains route point"
+            };
+        }
+    }
+
+    for (let i = 1; i < samples.length; i++) {
+
+        const a = [
+            Number(samples[i - 1][0]),
+            Number(samples[i - 1][1])
+        ];
+
+        const b = [
+            Number(samples[i][0]),
+            Number(samples[i][1])
+        ];
+
+        for (let j = 0; j < polygon.length; j++) {
+
+            const p = polygon[j];
+            const q = polygon[(j + 1) % polygon.length];
+
+            const c = [
+                Number(p[1]),
+                Number(p[0])
+            ];
+
+            const d = [
+                Number(q[1]),
+                Number(q[0])
+            ];
+
+            if (segmentsIntersect(a, b, c, d)) {
+
+                return {
+                    lat: (a[1] + b[1]) / 2,
+                    lon: (a[0] + b[0]) / 2,
+                    distanceKm: 0,
+                    spatialEvidence:
+                        "CAP polygon boundary intersects route"
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+function segmentDistanceKmToPoint(
+    a,
+    b,
+    targetLat,
+    targetLon
+) {
+
+    const latRad =
+        targetLat * Math.PI / 180;
+
+    const kmPerDegLat = 111.32;
+    const kmPerDegLon =
+        111.32 * Math.cos(latRad);
+
+    const ax =
+        (Number(a[0]) - targetLon) *
+        kmPerDegLon;
+
+    const ay =
+        (Number(a[1]) - targetLat) *
+        kmPerDegLat;
+
+    const bx =
+        (Number(b[0]) - targetLon) *
+        kmPerDegLon;
+
+    const by =
+        (Number(b[1]) - targetLat) *
+        kmPerDegLat;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+
+    const denominator =
+        dx * dx + dy * dy;
+
+    let t = denominator > 0
+        ? -(ax * dx + ay * dy) / denominator
+        : 0;
+
+    t = Math.max(0, Math.min(1, t));
+
+    const x = ax + t * dx;
+    const y = ay + t * dy;
+
+    return Math.sqrt(x * x + y * y);
+}
+
+function routePointNearAlert(coords, alert) {
+
+    if (
+        !Array.isArray(coords) ||
+        coords.length < 2 ||
+        !alert
+    ) {
+        return null;
+    }
+
+    const polygon = parsePolygon(alert);
+
+    if (polygon?.length >= 3) {
+        return routeIntersectsPolygon(coords, polygon);
+    }
+
+    const center = parseCentroid(alert);
+    const limit = visualRadiusKm(alert, hazardKind(alert));
+
+    if (!center || !Number.isFinite(limit)) {
+        return null;
+    }
+
+    const targetLat = center[0];
+    const targetLon = center[1];
+
+    const step =
+        Math.max(1, Math.floor(coords.length / 500));
+
+    let best = null;
+
+    for (
+        let i = 1;
+        i < coords.length;
+        i += step
+    ) {
+
+        const a = coords[i - 1];
+        const b = coords[i];
+
+        const distance =
+            segmentDistanceKmToPoint(
+                a,
+                b,
+                targetLat,
+                targetLon
+            );
+
+        if (
+            distance <= limit &&
+            (!best || distance < best.distanceKm)
+        ) {
+
+            best = {
+                lat:
+                    (Number(a[1]) + Number(b[1])) / 2,
+                lon:
+                    (Number(a[0]) + Number(b[0])) / 2,
+                distanceKm: distance,
+                limitKm: limit,
+                spatialEvidence:
+                    "CAP circle intersects route corridor"
+            };
+        }
+    }
+
+    return best;
+}
+
+function renderLiveHazardsOnSelectedRoute(route) {
+    clearRouteLiveHazards();
+    if (!route?.geometry?.coordinates || !Array.isArray(sachetAlerts) || !sachetAlerts.length) return;
+
+    const coords = route.geometry.coordinates;
+    sachetAlerts.forEach(alert => {
+        const hit = routePointNearAlert(coords, alert);
+        if (!hit) return;
+
+        const center = parseCentroid(alert) || [hit.lat, hit.lon];
+        const areaResult = addHazardArea(alert, center);
+        if (areaResult?.layer) routeLiveHazardLayers.push(areaResult.layer);
+
+        const marker = createHazardIcon(alert, hit.lat, hit.lon);
+        if (marker) routeLiveHazardLayers.push(marker);
+
+        const kind = hazardKind(alert);
+        const label = alert.disaster_type || alert.event || hazardType(alert);
+        const meta = severityMeta(alert);
+        const sourceText = alert.source || 'Government alert feed';
+        marker?.bindPopup(`
+            <div style="min-width:245px">
+                <b>${escapeHTML(label)}</b><br>
+                <span style="color:${meta.color};font-weight:800">${escapeHTML(meta.label)} risk</span><br>
+                <span style="display:inline-block;margin-top:6px;padding:3px 7px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:800">LIVE ALERT</span><br><br>
+                <b>Route impact:</b> within ~${Math.round(hit.limitKm)} km of route<br>
+                <b>Hazard type:</b> ${escapeHTML(kind)}<br>
+                <b>Area:</b> ${escapeHTML(alert.area_description || alert.areaDescription || 'Affected area unavailable')}<br>
+                <small>Source: ${escapeHTML(sourceText)}</small>
+            </div>
+        `);
+    });
+}
+// ======================================================
+// SACHET ALERT MARKER CLEANUP
+// Fix: clearAlertMarkers is not defined
+// ======================================================
+
+function clearAlertMarkers() {
+
+    // Make sure alertMarkers exists
+    if (!Array.isArray(alertMarkers)) {
+        alertMarkers = [];
+        return;
+    }
+
+    // Remove all previous SACHET markers from map
+    alertMarkers.forEach(marker => {
+
+        try {
+
+            if (
+                typeof map !== "undefined" &&
+                map &&
+                typeof map.hasLayer === "function" &&
+                map.hasLayer(marker)
+            ) {
+                map.removeLayer(marker);
+            }
+
+        } catch (error) {
+
+            console.warn(
+                "Could not remove SACHET alert marker:",
+                error
+            );
+
+        }
+
+    });
+
+    // Reset marker list
+    alertMarkers = [];
+}
+
+
+// ======================================================
+// EXISTING FUNCTION
+// ======================================================
+
+function displaySachetAlerts() {
+    const alertBox = document.getElementById("alerts");
+    clearAlertMarkers();
+    clearHazardLayers();
+
+    if (!Array.isArray(sachetAlerts) || sachetAlerts.length === 0) {
+        alertBox.innerHTML = `<div class="alert green">No active government disaster alerts are currently available.</div>`;
+        return;
+    }
+
+    alertBox.innerHTML = "";
+    sachetAlerts.slice(0, 20).forEach(alert => {
+        const meta = severityMeta(alert);
+        const kind = hazardKind(alert);
+        const div = document.createElement("div");
+        div.className = `alert ${meta.label === "Severe" ? "red" : meta.label === "High" ? "orange" : "yellow"}`;
+        div.innerHTML = `
+            <b>${escapeHTML(alert.disaster_type || alert.event || "Government Disaster Alert")}</b><br>
+            ${escapeHTML(alert.area_description || alert.areaDescription || "Affected area unavailable")}<br><br>
+            <small>Severity: ${escapeHTML(alert.severity_level || alert.severity || meta.label)}</small>
+        `;
+        alertBox.appendChild(div);
+
+        const center = parseCentroid(alert);
+        // Once a route is selected, only show hazard animations that actually
+        // affect that route. This avoids unrelated alert icons covering the map.
+        if (center && !(routeCandidates.length && routeCandidates[selectedRouteIndex])) {
+            addHazardArea(alert, center);
+            createHazardIcon(alert, center[0], center[1]);
+        }
+    });
+
+    if (routeCandidates.length && routeCandidates[selectedRouteIndex]) {
+        renderSelectedRoute(routeCandidates[selectedRouteIndex]);
+    }
+}
+
+
+// ------------------------------------------------------
+// ROUTING
+// OSRM
+// ------------------------------------------------------
+
+
+// ------------------------------------------------------
+// INDIA-ONLY ROUTING GUARD
+// ------------------------------------------------------
+// OSRM can choose an international shortcut when both endpoints
+// are inside India. It has no reliable "country=India only" option.
+// We therefore validate the FULL returned route geometry against
+// an India land polygon before accepting a route.
+//
+// The routing guard uses a GeoJSON India country polygon.
+// The boundary is used only as a routing guard; it is not used
+// to alter the basemap.
+// Source: world.geo.json India boundary.
+const INDIA_BOUNDARY_URL =
+    "https://raw.githubusercontent.com/johan/world.geo.json/master/countries/IND.geo.json";
+
+let indiaBoundaryGeometry = null;
+let indiaBoundaryPromise = null;
+
+function pointInRing(point, ring) {
+    const x = Number(point[0]);
+    const y = Number(point[1]);
+    let inside = false;
+
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = Number(ring[i][0]);
+        const yi = Number(ring[i][1]);
+        const xj = Number(ring[j][0]);
+        const yj = Number(ring[j][1]);
+
+        const intersects =
+            ((yi > y) !== (yj > y)) &&
+            (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-15) + xi);
+
+        if (intersects) inside = !inside;
+    }
+
+    return inside;
+}
+
+function pointInPolygon(point, polygon) {
+    if (!Array.isArray(polygon) || !polygon.length) return false;
+
+    // First ring is exterior; later rings are holes.
+    if (!pointInRing(point, polygon[0])) return false;
+
+    for (let i = 1; i < polygon.length; i++) {
+        if (pointInRing(point, polygon[i])) return false;
+    }
+
+    return true;
+}
+
+function pointInGeometry(point, geometry) {
+    if (!geometry) return false;
+
+    if (geometry.type === "Polygon") {
+        return pointInPolygon(point, geometry.coordinates);
+    }
+
+    if (geometry.type === "MultiPolygon") {
+        return geometry.coordinates.some(poly =>
+            pointInPolygon(point, poly)
+        );
+    }
+
+    return false;
+}
+
+async function loadIndiaBoundary() {
+    if (indiaBoundaryGeometry) return indiaBoundaryGeometry;
+    if (indiaBoundaryPromise) return indiaBoundaryPromise;
+
+    indiaBoundaryPromise = fetch(INDIA_BOUNDARY_URL, {
+        cache: "force-cache"
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("India boundary data could not be loaded (HTTP " + response.status + ").");
+        }
+        return response.json();
+    })
+    .then(geojson => {
+        // The boundary source is a GeoJSON FeatureCollection.  Build a
+        // MultiPolygon from every valid Polygon/MultiPolygon feature so the
+        // validator does not depend on a particular feature ordering.
+        if (geojson?.type === "FeatureCollection") {
+            const geometries = (geojson.features || [])
+                .map(feature => feature?.geometry)
+                .filter(geometry =>
+                    geometry?.type === "Polygon" ||
+                    geometry?.type === "MultiPolygon"
+                );
+
+            if (geometries.length === 1) {
+                indiaBoundaryGeometry = geometries[0];
+            } else if (geometries.length > 1) {
+                const polygons = [];
+                for (const geometry of geometries) {
+                    if (geometry.type === "Polygon") {
+                        polygons.push(geometry.coordinates);
+                    } else if (geometry.type === "MultiPolygon") {
+                        polygons.push(...geometry.coordinates);
+                    }
+                }
+                indiaBoundaryGeometry = {
+                    type: "MultiPolygon",
+                    coordinates: polygons
+                };
+            }
+        } else if (geojson?.type === "Feature") {
+            indiaBoundaryGeometry = geojson.geometry || null;
+        } else if (geojson?.type === "Polygon" || geojson?.type === "MultiPolygon") {
+            indiaBoundaryGeometry = geojson;
+        }
+
+        const valid =
+            indiaBoundaryGeometry &&
+            (indiaBoundaryGeometry.type === "Polygon" ||
+             indiaBoundaryGeometry.type === "MultiPolygon") &&
+            Array.isArray(indiaBoundaryGeometry.coordinates) &&
+            indiaBoundaryGeometry.coordinates.length > 0;
+
+        if (!valid) {
+            throw new Error("Invalid India boundary geometry.");
+        }
+
+        return indiaBoundaryGeometry;
+    })
+    .catch(error => {
+        indiaBoundaryPromise = null;
+        throw error;
+    });
+
+    return indiaBoundaryPromise;
+}
+
+function routeStaysInsideIndia(route) {
+    const coords = route?.geometry?.coordinates;
+
+    if (!Array.isArray(coords) || coords.length < 2) {
+        return false;
+    }
+
+    if (!indiaBoundaryGeometry) {
+        return false;
+    }
+
+    // Sample the entire route densely enough to catch a country crossing.
+    // Include first/last points explicitly.
+    const sampleCount = Math.min(500, Math.max(80, coords.length));
+    const samples = [];
+
+    for (let i = 0; i < sampleCount; i++) {
+        const index = Math.round(
+            (i / (sampleCount - 1)) * (coords.length - 1)
+        );
+        samples.push(coords[index]);
+    }
+
+    return samples.every(([lon, lat]) =>
+        pointInGeometry(
+            [Number(lon), Number(lat)],
+            indiaBoundaryGeometry
+        )
+    );
+}
+
+// ------------------------------------------------------
+// INDIA-ONLY NER ROUTING CORRIDOR
+// ------------------------------------------------------
+// OSRM's public router does not provide a reliable country-exclusion
+// switch. For routes entering the North Eastern Region from the west,
+// force the recognised Indian land corridor: Kolkata -> Malda ->
+// Siliguri -> Guwahati -> destination. This prevents the router from
+// choosing a shorter Bangladesh shortcut.
+
+const INDIA_NER_CORRIDOR = [
+    { name: "Malda", lat: 25.0108, lon: 88.1411 },
+    { name: "Siliguri", lat: 26.7271, lon: 88.3953 },
+    { name: "Guwahati", lat: 26.1445, lon: 91.7362 }
+];
+
+function isLikelyNERDestination(lat, lon) {
+    // Practical geographic envelope for the NER + Sikkim approach.
+    // This deliberately includes the Siliguri gateway so NER-bound routes
+    // use the Indian corridor instead of a Bangladesh shortcut.
+    return Number(lat) >= 21.5 && Number(lat) <= 30.5 &&
+           Number(lon) >= 88.0 && Number(lon) <= 97.8;
+}
+
+function buildIndiaCorridorWaypoints(fromLat, fromLon, toLat, toLon) {
+    const points = [
+        { lat: Number(fromLat), lon: Number(fromLon) }
+    ];
+
+    if (isLikelyNERDestination(toLat, toLon)) {
+        // Only add a gateway when it is meaningfully ahead of the start.
+        // This avoids routing NER-to-NER trips backwards through Siliguri.
+        const startLon = Number(fromLon);
+        if (startLon < 88.25) {
+            points.push(INDIA_NER_CORRIDOR[0]); // Malda
+            points.push(INDIA_NER_CORRIDOR[1]); // Siliguri
+        } else if (startLon < 90.5) {
+            points.push(INDIA_NER_CORRIDOR[1]); // Siliguri
+        }
+
+        if (Number(fromLon) < 91.0 && Number(toLon) > 89.5) {
+            points.push(INDIA_NER_CORRIDOR[2]); // Guwahati
+        }
+    }
+
+    points.push({ lat: Number(toLat), lon: Number(toLon) });
+    return points;
+}
+
+function makeOSRMUrl(points, alternatives = true) {
+    const coordinateString = points
+        .map(p => `${p.lon},${p.lat}`)
+        .join(";");
+
+    return (
+        `https://router.project-osrm.org/route/v1/driving/${coordinateString}` +
+        `?overview=full&geometries=geojson&alternatives=${alternatives ? "true" : "false"}&steps=true`
+    );
+}
+
+async function getRoute(fromLat, fromLon, toLat, toLon, fromName = "", toName = "") {
+    await loadIndiaBoundary();
+
+    const startLat = Number(fromLat), startLon = Number(fromLon);
+    const endLat = Number(toLat), endLon = Number(toLon);
+    const destinationIsNER = isLikelyNERDestination(endLat, endLon);
+    const distanceFromSiliguriKm = distanceKm(
+    startLat,
+    startLon,
+    26.7271,
+    88.3953
+);
+
+const startAlreadyNearSiliguri =
+    distanceFromSiliguriKm <= 70;
+
+const needsSiliguriGateway =
+    destinationIsNER &&
+    endLon > 89.0 &&
+    !startAlreadyNearSiliguri;
+    const allRoutes = [];
+
+    async function requestRoute(points, label, alternatives = false) {
+        try {
+            const response = await fetch(makeOSRMUrl(points, alternatives));
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data.code !== "Ok" || !Array.isArray(data.routes)) return;
+            for (const route of data.routes) {
+                if (!route?.geometry?.coordinates?.length) continue;
+                allRoutes.push({ ...route, corridorLabel: label });
+            }
+        } catch (error) {
+            console.warn("Route request failed:", label, error);
+        }
+    }
+
+    const direct = [
+        { lat: startLat, lon: startLon },
+        { lat: endLat, lon: endLon }
+    ];
+
+    // Always ask the router for native alternatives first.
+    await requestRoute(direct, "OSRM alternative", true);
+
+    // Generic multi-corridor fallback for ALL origin/destination pairs.
+    // We create real OSRM routes through different road corridors instead of
+    // cloning the same geometry. The perpendicular offset is scaled to trip
+    // length so short local trips get small detours and long trips get wider
+    // corridor choices.
+    const lat1 = startLat * Math.PI / 180, lat2 = endLat * Math.PI / 180;
+    const dLat = endLat - startLat, dLon = (endLon - startLon) * Math.cos((startLat + endLat) * Math.PI / 360);
+    const straightKm = Math.max(1, Math.sqrt(dLat*dLat + dLon*dLon) * 111.2);
+    const midLat = (startLat + endLat) / 2;
+    const midLon = (startLon + endLon) / 2;
+    const bearingX = endLon - startLon;
+    const bearingY = endLat - startLat;
+    const norm = Math.sqrt(bearingX*bearingX + bearingY*bearingY) || 1;
+    const perpLat = -bearingX / norm;
+    const perpLon = bearingY / norm;
+    const offsetKm = Math.max(3, Math.min(55, straightKm * 0.10));
+    const latKm = 111.2;
+    const lonKm = Math.max(1, 111.2 * Math.cos(midLat * Math.PI / 180));
+
+    const offsetPoint = (fraction, side, extra = 0) => {
+        const baseLat = startLat + (endLat - startLat) * fraction;
+        const baseLon = startLon + (endLon - startLon) * fraction;
+        const km = offsetKm + extra;
+        return {
+            lat: baseLat + side * perpLat * km / latKm,
+            lon: baseLon + side * perpLon * km / lonKm
+        };
+    };
+
+    // Two broad alternatives and two smaller fallbacks.
+    const corridors = [
+        [offsetPoint(0.38, 1), offsetPoint(0.68, 1)],
+        [offsetPoint(0.38, -1), offsetPoint(0.68, -1)],
+        [offsetPoint(0.50, 1)],
+        [offsetPoint(0.50, -1)]
+    ];
+
+    // NER trips: retain the proven Indian gateway corridors in addition to the
+    // generic alternatives. These prevent Bangladesh shortcuts.
+    if (needsSiliguriGateway) {
+        await requestRoute([
+            { lat: startLat, lon: startLon },
+            { name: "Malda", lat: 25.0108, lon: 88.1411 },
+            { name: "Siliguri", lat: 26.7271, lon: 88.3953 },
+            { name: "Guwahati", lat: 26.1445, lon: 91.7362 },
+            { lat: endLat, lon: endLon }
+        ], "Siliguri–Guwahati corridor A");
+
+        await requestRoute([
+            { lat: startLat, lon: startLon },
+            { name: "Raiganj", lat: 25.6126, lon: 88.1241 },
+            { name: "Siliguri", lat: 26.7271, lon: 88.3953 },
+            { name: "Bongaigaon", lat: 26.4788, lon: 90.5583 },
+            { name: "Guwahati", lat: 26.1445, lon: 91.7362 },
+            { lat: endLat, lon: endLon }
+        ], "Siliguri–Bongaigaon corridor B");
+    }
+
+    // Generic corridor routing applies to every origin/destination pair.
+    // Generic corridors are queried for every trip. Do not require them all to
+    // be used; OSRM may reject an offset point if no nearby drivable road exists.
+    for (let i = 0; i < corridors.length; i++) {
+        await requestRoute([
+            { lat: startLat, lon: startLon },
+            ...corridors[i],
+            { lat: endLat, lon: endLon }
+        ], `Alternative corridor ${i + 1}`);
+    }
+
+    if (!allRoutes.length) throw new Error("No drivable route was returned.");
+
+    // Deduplicate only genuinely similar geometries. A route must differ by
+    // roughly 1 km at at least one sampled point to count as an alternative.
+    const sampleRoute = route => {
+        const c = route.geometry.coordinates;
+        const out = [];
+        for (const fraction of [0.15, 0.35, 0.50, 0.65, 0.85]) {
+            const i = Math.round(fraction * (c.length - 1));
+            out.push(c[Math.max(0, Math.min(c.length - 1, i))]);
+        }
+        return out;
+    };
+    const pointKm = (a,b) => {
+        const R=6371, p1=a[1]*Math.PI/180, p2=b[1]*Math.PI/180;
+        const dp=(b[1]-a[1])*Math.PI/180, dl=(b[0]-a[0])*Math.PI/180;
+        const q=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+        return 2*R*Math.asin(Math.min(1,Math.sqrt(q)));
+    };
+    const distinctFrom = (route, chosen) => {
+        if (!chosen.length) return true;
+        const a = sampleRoute(route);
+        return chosen.every(other => {
+            const b = sampleRoute(other);
+            const maxSeparation = Math.max(...a.map((p,i)=>pointKm(p,b[i])));
+            return maxSeparation >= 1.0;
+        });
+    };
+
+    // Country validation happens BEFORE selecting alternatives.
+    const indiaOnlyRoutes = allRoutes.filter(routeStaysInsideIndia);
+    if (!indiaOnlyRoutes.length) {
+        throw new Error("No India-only drivable route was returned. International routes were rejected.");
+    }
+
+    // Rank route candidates by a lightweight combination of distance and time
+    // only for pre-selection. Full disaster/weather/logistics scoring happens
+    // later in the main route handler.
+    const ranked = [...indiaOnlyRoutes].sort((a,b) =>
+        (Number(a.duration)||Infinity) + (Number(a.distance)||Infinity)/40 -
+        ((Number(b.duration)||Infinity) + (Number(b.distance)||Infinity)/40)
+    );
+
+    const selected = [];
+    // Prefer practical named corridors when available, then native OSRM routes,
+    // then generic offset corridors.
+    const preferredLabels = needsSiliguriGateway
+        ? ["Siliguri–Guwahati corridor A", "Siliguri–Bongaigaon corridor B"]
+        : [];
+
+    for (const label of preferredLabels) {
+        const candidate = ranked.find(r => r.corridorLabel === label && distinctFrom(r, selected));
+        if (candidate) selected.push(candidate);
+    }
+    for (const route of ranked) {
+        if (selected.length >= 2) break;
+        if (distinctFrom(route, selected)) selected.push(route);
+    }
+
+    // If the first two are still not distinct, make a final set of progressively
+    // wider corridor requests. This is still real OSRM routing, never a cloned
+    // or shifted polyline.
+    if (selected.length < 2) {
+        const wider = [70, 90, 120];
+        for (const km of wider) {
+            if (selected.length >= 2) break;
+            for (const side of [1,-1]) {
+                const wp = {
+                    lat: midLat + side * perpLat * km / latKm,
+                    lon: midLon + side * perpLon * km / lonKm
+                };
+                await requestRoute([
+                    {lat:startLat,lon:startLon}, wp, {lat:endLat,lon:endLon}
+                ], `Wide corridor ${side > 0 ? "A" : "B"}`);
+            }
+            const fresh = allRoutes.filter(routeStaysInsideIndia);
+            for (const route of fresh) {
+                if (selected.length >= 2) break;
+                if (distinctFrom(route, selected)) selected.push(route);
+            }
+        }
+    }
+
+    // Final fallback: use the two most different feasible OSRM routes even if
+    // their separation is under 1 km. They remain real routed alternatives.
+    if (selected.length < 2) {
+        for (const route of ranked) {
+            if (selected.includes(route)) continue;
+            selected.push(route);
+            if (selected.length >= 2) break;
+        }
+    }
+
+    if (selected.length < 2) {
+        throw new Error("Only one feasible road was returned by the routing network. A second real road alternative is not available for this location pair.");
+    }
+
+    return { code: "Ok", routes: selected.slice(0,2), waypoints: direct };
+}
+
+// ------------------------------------------------------
+// ROUTE BUTTON
+// ------------------------------------------------------
+
+document.getElementById("routeBtn")
+.addEventListener("click", async () => {
+
+    try {
+
+        const fromText =
+            document.getElementById("from").value.trim();
+
+        const toText =
+            document.getElementById("to").value.trim();
+
+        if (!fromText || !toText) {
+            alert("Enter From and Destination.");
+            return;
+        }
+
+        setStatus("🔎 Finding locations...");
+
+        let from;
+        let destination;
+
+        const fromInput = document.getElementById("from");
+        const toInput = document.getElementById("to");
+
+        if (fromInput.dataset.lat && fromInput.dataset.lon && fromInput.value.trim() === fromText) {
+            from = {
+                lat: parseFloat(fromInput.dataset.lat),
+                lon: parseFloat(fromInput.dataset.lon),
+                name: fromInput.dataset.displayName || fromText
+            };
+        } else if (
+            /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(fromText)
+        ) {
+            const parts = fromText.split(",");
+
+            from = {
+                lat: parseFloat(parts[0]),
+                lon: parseFloat(parts[1])
+            };
+        } else {
+            from = await geocode(fromText);
+        }
+
+        if (toInput.dataset.lat && toInput.dataset.lon && toInput.value.trim() === toText) {
+            destination = {
+                lat: parseFloat(toInput.dataset.lat),
+                lon: parseFloat(toInput.dataset.lon),
+                name: toInput.dataset.displayName || toText
+            };
+        } else {
+            destination = await geocode(toText);
+        }
+
+        setStatus("🧭 Generating India-only logistics routes...");
+
+        if (fromMarker) { map.removeLayer(fromMarker); fromMarker = null; }
+        if (destinationMarker) map.removeLayer(destinationMarker);
+
+        if (usingLiveLocation && currentLocationMarker) {
+            // The live device marker IS the START marker, so both use exactly the same visual.
+            currentLocationMarker.setLatLng([from.lat, from.lon]);
+            currentLocationMarker.bindPopup("<b>START / Current location</b><br>Live GPS tracking is active.");
+        } else {
+            fromMarker = L.marker([from.lat, from.lon], {
+                icon: createLiveLocationIcon(0),
+                zIndexOffset: 1500
+            })
+                .addTo(map)
+                .bindPopup("<b>START</b>");
+        }
+
+        destinationMarker = L.marker([destination.lat, destination.lon])
+            .addTo(map)
+            .bindPopup("DESTINATION");
+
+        const routeData = await getRoute(
+            from.lat,
+            from.lon,
+            destination.lat,
+            destination.lon
+        );
+
+        if (!routeData.routes || routeData.routes.length === 0) {
+            throw new Error("No route found");
+        }
+
+        if (routeLayer) {
+            map.removeLayer(routeLayer);
+        }
+
+        // Refresh weather for destination.
+        await loadWeather(destination.lat, destination.lon);
+
+        const priority = document.getElementById("priority").value;
+        const priorityBoost =
+            priority === "critical" ? 10 :
+            priority === "high" ? 5 : 0;
+
+        routeCandidates = await Promise.all(routeData.routes.map(async (route, index) => {
+
+            const disasterRisk =
+                calculateRisk(route.geometry.coordinates);
+
+            const terrain =
+                await estimateTerrainRisk(route);
+            const terrainRisk = terrain.risk;
+
+            const vehicleRisk =
+                calculateVehicleCompatibilityRisk(route);
+
+            const accessibility =
+                calculateAccessibilityScore(
+                    disasterRisk,
+                    terrainRisk,
+                    vehicleRisk
+                );
+
+            const finalScore =
+                calculateLogisticsScore({
+                    route,
+                    disasterRisk,
+                    terrainRisk,
+                    weatherRisk: lastWeatherRisk,
+                    vehicleRisk,
+                    accessibility,
+                    priorityBoost
+                });
+
+            return {
+                ...route,
+                index,
+                _from: from,
+                _destination: destination,
+                disasterRisk,
+                _baseDisasterRisk: disasterRisk,
+                terrainRisk,
+                vehicleRisk,
+                accessibility,
+                finalScore,
+                terrainSource: terrain.source,
+                terrainMaxElevationM: terrain.maxElevationM,
+                terrainMaxGradePct: terrain.maxGradePct
+            };
+        }));
+
+        routeCandidates.sort(
+            (a, b) => a.finalScore - b.finalScore
+        );
+
+        // Show at most two useful choices: Route A (best) and Route B (alternative).
+        routeCandidates = routeCandidates.slice(0, 2);
+        selectedRouteIndex = 0;
+        const best = routeCandidates[selectedRouteIndex];
+
+        lastRouteRisk = best.disasterRisk;
+
+        document.getElementById("dashboardRisk").textContent =
+            best.disasterRisk + "/100";
+
+        document.getElementById("accessibilityScore").textContent =
+            best.accessibility + "/100";
+
+        showRisk(best.disasterRisk);
+
+        renderRouteAlternatives(routeCandidates);
+
+        renderLogisticsRecommendation(
+            best,
+            from,
+            destination
+        );
+
+        // Draw best route, then predict disaster conditions along that route.
+        renderSelectedRoute(best);
+        setStatus("🔮 Predicting disaster risk along the selected route...");
+        const prediction = await predictDisastersOnRoute(best, true);
+        best.predictedRisk = prediction.risk;
+        best.predictedHazards = prediction.hazards;
+        best.weatherRisk = Number.isFinite(prediction.weatherRisk) ? prediction.weatherRisk : lastWeatherRisk;
+        best.disasterRisk = Math.min(100, Math.round(best._baseDisasterRisk + prediction.risk * 0.55));
+
+        // Analyse Route B too, but do not draw its hazards over the currently
+        // selected route. This gives the recommendation engine real route-vs-route
+        // evidence while keeping only the selected route's prediction visible.
+        if (routeCandidates[1]) {
+            const alternativePrediction = await predictDisastersOnRoute(routeCandidates[1], false);
+            routeCandidates[1].predictedRisk = alternativePrediction.risk;
+            routeCandidates[1].predictedHazards = alternativePrediction.hazards;
+            routeCandidates[1].weatherRisk = Number.isFinite(alternativePrediction.weatherRisk) ? alternativePrediction.weatherRisk : lastWeatherRisk;
+            routeCandidates[1].disasterRisk = Math.min(100, Math.round(routeCandidates[1]._baseDisasterRisk + alternativePrediction.risk * 0.55));
+        }
+
+        // Recalculate accessibility/logistics score AFTER forecast hazards are known.
+        // This prevents a route with higher predicted risk from being labelled
+        // recommended merely because it was shorter before prediction ran.
+        routeCandidates.forEach(route => {
+            route.accessibility = calculateAccessibilityScore(
+                route.disasterRisk, route.terrainRisk, route.vehicleRisk
+            );
+            route.finalScore = calculateLogisticsScore({
+                route,
+                disasterRisk: route.disasterRisk,
+                terrainRisk: route.terrainRisk,
+                weatherRisk: Number.isFinite(route.weatherRisk) ? route.weatherRisk : lastWeatherRisk,
+                vehicleRisk: route.vehicleRisk,
+                accessibility: route.accessibility,
+                priorityBoost
+            });
+        });
+
+        routeCandidates.sort((a, b) => a.finalScore - b.finalScore);
+        selectedRouteIndex = 0;
+        const recommended = routeCandidates[0];
+        lastRouteRisk = recommended.disasterRisk;
+        document.getElementById("dashboardRisk").textContent = recommended.disasterRisk + "/100";
+        document.getElementById("accessibilityScore").textContent = recommended.accessibility + "/100";
+        showRisk(recommended.disasterRisk);
+        renderSelectedRoute(recommended);
+        renderRouteAlternatives(routeCandidates);
+        renderLogisticsRecommendation(recommended, from, destination);
+
+        setStatus(
+            recommended.predictedHazards?.length
+                ? `🔮 ${recommended.predictedHazards.length} predicted disaster zone(s) detected on the recommended route.`
+                : `✅ No significant predicted disaster zone detected on the recommended route.`
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        setStatus("❌ " + error.message);
+    }
+});
+
+
+function calculateLogisticsScore({
+    route,
+    disasterRisk,
+    terrainRisk,
+    weatherRisk,
+    vehicleRisk,
+    accessibility,
+    priorityBoost
+}) {
+
+    const distanceKmValue =
+        Number(route.distance || 0) / 1000;
+
+    const durationMin =
+        Number(route.duration || 0) / 60;
+
+    // Normalize route length/time to a bounded 0-100 penalty.
+    const distanceRisk =
+        Math.min(distanceKmValue / 5, 100);
+
+    const timeRisk =
+        Math.min(durationMin / 10, 100);
+
+    // Lower is better.
+    const accessibilityRisk =
+        100 - accessibility;
+
+    let score =
+        distanceRisk * 0.10 +
+        timeRisk * 0.10 +
+        disasterRisk * 0.30 +
+        weatherRisk * 0.15 +
+        (Number.isFinite(terrainRisk) ? terrainRisk : 0) * 0.15 +
+        vehicleRisk * 0.10 +
+        accessibilityRisk * 0.10;
+
+    // Critical deliveries favour routes with lower total risk.
+    if (priorityBoost > 0) {
+        score -= priorityBoost * (disasterRisk < 40 ? 0.5 : -0.5);
+    }
+
+    return Math.max(0, Math.min(Math.round(score), 100));
+}
+
+
+async function estimateTerrainRisk(route) {
+
+    // Use real elevation samples from Open-Meteo instead of a distance-based
+    // placeholder. This is still a terrain-exposure indicator, not a
+    // landslide forecast by itself.
+    const coords = Array.isArray(route?.geometry?.coordinates)
+        ? route.geometry.coordinates
+        : [];
+
+    const sampled = [];
+    const count = Math.min(18, Math.max(2, coords.length));
+    for (let i = 0; i < count; i++) {
+        const idx = Math.round((coords.length - 1) * (i / (count - 1)));
+        const c = coords[idx];
+        if (Array.isArray(c) && Number.isFinite(Number(c[0])) && Number.isFinite(Number(c[1]))) {
+            sampled.push([Number(c[1]), Number(c[0])]);
+        }
+    }
+
+    if (sampled.length < 2) {
+        return { risk: 0, maxElevationM: 0, maxGradePct: 0, source: "No terrain sample available" };
+    }
+
+    try {
+        const latitudes = sampled.map(p => p[0].toFixed(5)).join(',');
+        const longitudes = sampled.map(p => p[1].toFixed(5)).join(',');
+        const url = `https://api.open-meteo.com/v1/elevation?latitude=${latitudes}&longitude=${longitudes}`;
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error("Elevation request failed");
+        const data = await response.json();
+        const elevations = Array.isArray(data?.elevation)
+            ? data.elevation.map(Number)
+            : [];
+
+        if (elevations.length !== sampled.length || elevations.some(v => !Number.isFinite(v))) {
+            throw new Error("Incomplete elevation data");
+        }
+
+        let maxElevationM = Math.max(...elevations);
+        let maxGradePct = 0;
+
+        for (let i = 1; i < elevations.length; i++) {
+            const [lat1, lon1] = sampled[i - 1];
+            const [lat2, lon2] = sampled[i];
+            const horizontalKm = Math.max(0.1, distanceKm(lat1, lon1, lat2, lon2));
+            const gradePct = Math.abs(elevations[i] - elevations[i - 1]) / (horizontalKm * 1000) * 100;
+            maxGradePct = Math.max(maxGradePct, gradePct);
+        }
+
+        // Conservative terrain-exposure score. Flat plains remain close to 0;
+        // high elevation and steep grades increase exposure. It is not itself
+        // a claim that a landslide will occur.
+        const elevationComponent = Math.min(55, Math.max(0, maxElevationM - 50) / 60);
+        const gradeComponent = Math.min(45, maxGradePct * 8);
+        const risk = Math.max(0, Math.min(100, Math.round(
+            elevationComponent * 0.55 + gradeComponent * 0.45
+        )));
+
+        return {
+            risk,
+            maxElevationM: Math.round(maxElevationM),
+            maxGradePct: Number(maxGradePct.toFixed(1)),
+            source: "Open-Meteo Elevation API / Copernicus DEM GLO-90"
+        };
+    } catch (error) {
+        console.warn("Terrain elevation unavailable:", error);
+        return {
+            risk: null,
+            maxElevationM: null,
+            maxGradePct: null,
+            source: "Elevation unavailable — terrain risk not assumed"
+        };
+    }
+}
+
+function distanceKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+
+function calculateVehicleCompatibilityRisk(route) {
+
+    const vehicle =
+        document.getElementById("vehicle").value;
+
+    const distanceKmValue =
+        Number(route.distance || 0) / 1000;
+
+    if (vehicle === "heavy" && distanceKmValue > 600) {
+        return 45;
+    }
+
+    if (vehicle === "emergency") {
+        return 5;
+    }
+
+    if (vehicle === "4x4") {
+        return 10;
+    }
+
+    return 20;
+}
+
+
+function calculateAccessibilityScore(
+    disasterRisk,
+    terrainRisk,
+    vehicleRisk
+) {
+
+    const score =
+        100 -
+        (
+            disasterRisk * 0.45 +
+            (Number.isFinite(terrainRisk) ? terrainRisk : 0) * 0.25 +
+            vehicleRisk * 0.30
+        );
+
+    return Math.max(
+        0,
+        Math.min(Math.round(score), 100)
+    );
+}
+
+
+function renderRouteAlternatives(routes) {
+    const container = document.getElementById("routeAlternatives");
+    if (!routes.length) {
+        container.innerHTML = "No alternatives available.";
+        return;
+    }
+
+    container.innerHTML = routes.map((route, i) => {
+        const distance = (route.distance / 1000).toFixed(1);
+        const duration = Math.round(route.duration / 60);
+        const score = route.finalScore;
+        const scoreClass = score <= 35 ? "score-good" : score <= 65 ? "score-mid" : "score-bad";
+        const cls = `route-card clickable ${i === selectedRouteIndex ? "selected" : ""} ${i === 0 ? "best" : ""}`;
+        const tag = i === 0 ? "RECOMMENDED" : "NOT RECOMMENDED";
+        const hazards = getRouteHazardSummary(route.geometry.coordinates);
+        const predicted = route.predictedHazards || [];
+        return `
+            <div class="${cls}" data-route-index="${i}" tabindex="0" role="button" aria-label="Select Route ${String.fromCharCode(65+i)}">
+                <div class="route-title">
+                    <span>Route ${String.fromCharCode(65 + i)}</span>
+                    <span class="score-pill ${scoreClass}">${tag}</span>
+                </div>
+                <p>📏 ${distance} km · ⏱️ ${duration} min</p>
+                <p>🚨 Disaster Risk: <b>${route.disasterRisk}/100</b></p>
+                <p>🌦️ Weather Risk: <b>${Number.isFinite(route.weatherRisk) ? route.weatherRisk : "N/A"}/100</b></p>
+                <p>🏔️ Terrain Exposure: <b>${Number.isFinite(route.terrainRisk) ? route.terrainRisk + "/100" : "N/A"}</b></p>
+                ${route.terrainSource ? `<div class="mini">Terrain: ${escapeHTML(route.terrainSource)}</div>` : ""}
+                <p>♿ Accessibility: <b>${route.accessibility}/100</b></p>
+                <p>🧠 Logistics Score: <b>${route.finalScore}/100</b></p>
+                ${hazards.length ? `<div class="route-warning"><b>${hazards.length} live hazard zone(s) intersect this route</b><br>${hazards.slice(0,3).map(escapeHTML).join(" · ")}</div>` : `<div class="hazard-summary">No mapped live alert zone intersects this route.</div>`}
+                ${route.predictedHazards?.length ? `<div class="prediction-note"><b>🔮 ${route.predictedHazards.length} predicted hazard zone(s)</b><br>${route.predictedHazards.slice(0,3).map(h => escapeHTML(h.title)).join(" · ")}</div>` : ""}
+            </div>
+        `;
+    }).join("");
+
+    container.querySelectorAll(".route-card[data-route-index]").forEach(card => {
+        const select = async () => {
+            selectedRouteIndex = Number(card.dataset.routeIndex);
+            const route = routeCandidates[selectedRouteIndex];
+            if (!route) return;
+            renderSelectedRoute(route);
+            clearPredictedHazards();
+            setStatus(`🔮 Predicting disasters on Route ${String.fromCharCode(65 + selectedRouteIndex)}...`);
+            const prediction = await predictDisastersOnRoute(route);
+            route.predictedRisk = prediction.risk;
+            route.predictedHazards = prediction.hazards;
+            route.weatherRisk = Number.isFinite(prediction.weatherRisk) ? prediction.weatherRisk : route.weatherRisk;
+            route.disasterRisk = Math.min(100, Math.round((route._baseDisasterRisk ?? route.disasterRisk) + prediction.risk * 0.55));
+            route.accessibility = calculateAccessibilityScore(route.disasterRisk, route.terrainRisk, route.vehicleRisk);
+            route.finalScore = calculateLogisticsScore({
+                route,
+                disasterRisk: route.disasterRisk,
+                terrainRisk: route.terrainRisk,
+                weatherRisk: lastWeatherRisk,
+                vehicleRisk: route.vehicleRisk,
+                accessibility: route.accessibility,
+                priorityBoost: document.getElementById("priority").value === "critical" ? 10 : document.getElementById("priority").value === "high" ? 5 : 0
+            });
+            document.getElementById("dashboardRisk").textContent = route.disasterRisk + "/100";
+            document.getElementById("accessibilityScore").textContent = route.accessibility + "/100";
+            showRisk(route.disasterRisk);
+            renderLogisticsRecommendation(route, route._from, route._destination);
+            renderRouteAlternatives(routeCandidates);
+            setStatus(prediction.hazards.length
+                ? `🔮 Route ${String.fromCharCode(65 + selectedRouteIndex)}: ${prediction.hazards.length} predicted disaster zone(s) detected.`
+                : `✅ Route ${String.fromCharCode(65 + selectedRouteIndex)}: no significant predicted disaster zone detected.`);
+        };
+        card.addEventListener("click", select);
+        card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); } });
+    });
+}
+
+function getRouteHazardSummary(coords) {
+
+    const found = [];
+
+    if (
+        !Array.isArray(coords) ||
+        coords.length < 2 ||
+        !Array.isArray(sachetAlerts)
+    ) {
+        return found;
+    }
+
+    for (const alert of sachetAlerts) {
+
+        const hit =
+            routePointNearAlert(
+                coords,
+                alert
+            );
+
+        if (hit) {
+            found.push(
+                alert.disaster_type ||
+                alert.disasterType ||
+                alert.event ||
+                "Government alert"
+            );
+        }
+    }
+
+    return [...new Set(found)];
+}
+
+
+// ------------------------------------------------------
+// PREDICTIVE DISASTER INTELLIGENCE ON THE ROUTE
+// ------------------------------------------------------
+// Live government alerts and predictive weather risk are deliberately kept
+// separate. When live alerts are unavailable, the app can still estimate
+// future hazard conditions along the selected route using Open-Meteo forecast
+// data. These are predictions, NOT confirmed government warnings.
+
+function clearPredictedHazards() {
+    predictedHazardLayers.forEach(layer => {
+        try { map.removeLayer(layer); } catch (_) {}
+    });
+    predictedHazardLayers = [];
+    predictedHazards = [];
+}
+
+function predictionColor(kind) {
+    if (kind === "flood") return "#0284c7";
+    if (kind === "landslide") return "#b45309";
+    if (kind === "thunder") return "#7c3aed";
+    if (kind === "fog") return "#64748b";
+    if (kind === "snow") return "#2563eb";
+    if (kind === "storm") return "#dc2626";
+    return "#6366f1";
+}
+
+function sampleRouteForPrediction(coords, count = 9) {
+    if (!Array.isArray(coords) || coords.length < 2) return [];
+    const n = Math.min(count, coords.length);
+    const samples = [];
+    for (let i = 0; i < n; i++) {
+        const index = Math.round((i / (n - 1)) * (coords.length - 1));
+        samples.push({ coord: coords[index], fraction: i / (n - 1) });
+    }
+    return samples;
+}
+
+function forecastIndexForFraction(fraction, durationSeconds) {
+    // Forecast hour is estimated from the route's travel time. Clamp to the
+    // first 24 hours because this is a short-horizon route risk prototype.
+    const hoursAhead = Math.max(0, Math.min(23, (Number(durationSeconds || 0) / 3600) * fraction));
+    return Math.min(23, Math.max(0, Math.round(hoursAhead)));
+}
+
+async function fetchRoutePointForecast(lat, lon) {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&forecast_days=1&hourly=precipitation,rain,showers,snowfall,weather_code,wind_speed_10m,visibility,temperature_2m,relative_humidity_2m&timezone=auto`;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) throw new Error("Forecast request failed");
+    return response.json();
+}
+
+function classifyPredictedHazards(weather, hourIndex, terrainRisk) {
+    const h = weather?.hourly || {};
+    const precipitation = Number(h.precipitation?.[hourIndex] ?? 0);
+    const rain = Number(h.rain?.[hourIndex] ?? precipitation);
+    const showers = Number(h.showers?.[hourIndex] ?? 0);
+    const snowfall = Number(h.snowfall?.[hourIndex] ?? 0);
+    const wind = Number(h.wind_speed_10m?.[hourIndex] ?? 0);
+    const visibility = Number(h.visibility?.[hourIndex] ?? 99999);
+    const temperature = Number(h.temperature_2m?.[hourIndex] ?? 25);
+    const humidity = Number(h.relative_humidity_2m?.[hourIndex] ?? 60);
+    const code = Number(h.weather_code?.[hourIndex] ?? -1);
+    const result = [];
+
+    // WMO thunderstorm codes 95-99.
+    if ([95, 96, 99].includes(code)) {
+        result.push({ kind: "thunder", title: "Predicted Thunderstorm", severity: wind >= 55 ? "High" : "Moderate", score: wind >= 55 ? 32 : 24 });
+    }
+
+    // Heavy rain / runoff conditions. This is a prediction, not a flood warning.
+    if (precipitation >= 20 || rain >= 18 || showers >= 18) {
+        result.push({ kind: "flood", title: "Predicted Flood / Waterlogging Risk", severity: precipitation >= 35 ? "High" : "Moderate", score: precipitation >= 35 ? 34 : 24 });
+    }
+
+    // Do not manufacture a landslide prediction from a simple threshold.
+    // Live landslide alerts can arrive through SACHET; GSI susceptibility data
+    // is a reference layer and must be explicitly integrated before being scored.
+
+    if (wind >= 60 && (precipitation >= 5 || code >= 80)) {
+        result.push({ kind: "storm", title: "Predicted Severe Wind / Storm Risk", severity: wind >= 80 ? "High" : "Moderate", score: wind >= 80 ? 34 : 25 });
+    }
+
+    if (visibility > 0 && visibility <= 1000) {
+        result.push({ kind: "fog", title: "Predicted Dense Fog / Low Visibility", severity: visibility <= 500 ? "High" : "Moderate", score: visibility <= 500 ? 24 : 17 });
+    }
+
+    if (snowfall >= 1 || [71, 73, 75, 77, 85, 86].includes(code)) {
+        result.push({ kind: "snow", title: "Predicted Snow / Icy Road Risk", severity: snowfall >= 3 ? "High" : "Moderate", score: snowfall >= 3 ? 30 : 20 });
+    }
+
+    // Do not manufacture a fire prediction from weather alone.
+    // FSI fire danger uses weather, fuel, terrain and fire-history inputs.
+    // Live/pre-fire alerts can arrive through SACHET.
+
+    return { hazards: result, weather: { precipitation, rain, showers, snowfall, wind, visibility, temperature, humidity, code } };
+}
+
+function predictedSeverityColor(severity) {
+    return severity === "High" ? "#ea580c" : "#eab308";
+}
+
+function estimateHazardWindow(weather, kind, targetHour, terrainRisk) {
+    const hours = Array.isArray(weather?.hourly?.time) ? weather.hourly.time.length : 0;
+    if (!hours) return { startHour: targetHour, endHour: targetHour, durationHours: 1 };
+
+    const hasKind = (idx) => {
+        if (idx < 0 || idx >= hours) return false;
+        return classifyPredictedHazards(weather, idx, terrainRisk).hazards.some(h => h.kind === kind);
+    };
+
+    let startHour = targetHour;
+    let endHour = targetHour;
+    while (startHour > 0 && hasKind(startHour - 1)) startHour--;
+    while (endHour < hours - 1 && hasKind(endHour + 1)) endHour++;
+
+    return {
+        startHour,
+        endHour,
+        durationHours: Math.max(1, endHour - startHour + 1)
+    };
+}
+
+function formatForecastTime(timeString) {
+    if (!timeString) return "forecast hour";
+    const date = new Date(timeString);
+    if (Number.isNaN(date.getTime())) return String(timeString).replace("T", " ");
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function createPredictedHazardOverlay(hazard, lat, lon, weather, fraction, forecastHour = 0, terrainRisk = 0, routeDurationSeconds = 0) {
+    const color = predictionColor(hazard.kind);
+    const severityColor = predictedSeverityColor(hazard.severity);
+    const radiusKm = hazard.kind === "flood" ? 28 : hazard.kind === "storm" ? 45 : hazard.kind === "thunder" ? 25 : hazard.kind === "landslide" ? 16 : hazard.kind === "fog" ? 12 : hazard.kind === "fire" ? 20 : 18;
+    const window = estimateHazardWindow(weather, hazard.kind, forecastHour, terrainRisk);
+    const forecastTimes = weather?.hourly?.time || [];
+    const startTime = forecastTimes[window.startHour];
+    const endTime = forecastTimes[window.endHour];
+    const hoursUntil = Math.max(0, Math.round((Number(routeDurationSeconds || 0) / 3600) * fraction));
+
+    const area = L.circle([lat, lon], {
+        radius: radiusKm * 1000,
+        color,
+        weight: 3,
+        dashArray: "7 7",
+        fillColor: color,
+        fillOpacity: .12,
+        className: "predicted-hazard-area"
+    }).addTo(map);
+
+    area.bindPopup(`
+        <div style="min-width:245px">
+            <b>${escapeHTML(hazard.title)}</b> <span class="prediction-badge">FORECAST PREDICTION</span><br>
+            <span style="color:${severityColor};font-weight:800">${escapeHTML(hazard.severity)} risk</span><br><br>
+            <b>Forecast at route point</b><br>
+            <b>Expected in:</b> ~${hoursUntil} hour${hoursUntil === 1 ? "" : "s"}<br>
+            <b>Forecast time:</b> ${escapeHTML(formatForecastTime(startTime))}<br>
+            <b>Estimated duration:</b> ~${window.durationHours} hour${window.durationHours === 1 ? "" : "s"}<br>
+            ${startTime && endTime ? `<b>Forecast window:</b> ${escapeHTML(formatForecastTime(startTime))} – ${escapeHTML(formatForecastTime(endTime))}<br>` : ""}
+            Rain/precipitation: ${weather.precipitation.toFixed(1)} mm/h<br>
+            Wind: ${weather.wind.toFixed(1)} km/h<br>
+            Temperature: ${Number(weather.temperature ?? 0).toFixed(1)} °C<br>
+            Humidity: ${Number(weather.humidity ?? 0).toFixed(0)}%<br>
+            Visibility: ${weather.visibility >= 10000 ? ">10" : (weather.visibility / 1000).toFixed(1)} km
+            <br><small>Duration is an estimate from consecutive hourly forecast conditions; it is not a guaranteed disaster duration or government warning.</small>
+        </div>
+    `);
+    predictedHazardLayers.push(area);
+
+    const iconHtml = `<div class="hazard-icon predicted-hazard-icon" title="${escapeHTML(hazard.title)}">${hazardSvg(hazard.kind, color)}</div>`;
+    const marker = L.marker([lat, lon], {
+        icon: L.divIcon({ className: "", html: iconHtml, iconSize: [58, 58], iconAnchor: [29, 29] }),
+        zIndexOffset: 1100
+    }).addTo(map);
+    marker.bindPopup(`
+    <div style="min-width:240px">
+        <b>${escapeHTML(hazard.title)}</b><br>
+
+        <span class="prediction-badge">
+            FORECAST PREDICTION
+        </span><br>
+
+        <span style="color:${severityColor};font-weight:800">
+            ${escapeHTML(hazard.severity)} risk
+        </span><br>
+
+        <b>Expected in ~${hoursUntil}h · lasts ~${window.durationHours}h</b><br>
+
+        <small>
+            Forecast-based hazard estimate along the planned route.
+        </small>
+
+        <br><br>
+
+        <button
+            type="button"
+            onclick="openFullDayWeatherForecast()"
+            style="
+                width:100%;
+                padding:9px 12px;
+                border:none;
+                border-radius:8px;
+                background:#2563eb;
+                color:white;
+                font-weight:700;
+                cursor:pointer;
+            "
+        >
+            📅 View Full-Day Forecast
+        </button>
+    </div>
+`);
+    predictedHazardLayers.push(marker);
+    return { kind: hazard.kind, title: hazard.title, severity: hazard.severity, lat, lon, fraction, radiusKm, score: hazard.score };
+}
+
+function calculateForecastWeatherRisk(weather) {
+    if (!weather) return null;
+
+    const precipitation = Number(weather.precipitation ?? 0);
+    const rain = Number(weather.rain ?? 0);
+    const showers = Number(weather.showers ?? 0);
+    const wind = Number(weather.wind ?? 0);
+    const visibility = Number(weather.visibility ?? 99999);
+    const code = Number(weather.code ?? -1);
+
+    let risk = 0;
+    if ([95, 96, 99].includes(code)) risk += 45;
+    if ([65, 67, 75, 82, 86].includes(code)) risk += 35;
+
+    if (precipitation >= 20 || rain >= 18 || showers >= 18) risk += 30;
+    else if (precipitation >= 10 || rain >= 10 || showers >= 10) risk += 18;
+    else if (precipitation >= 5 || rain >= 5 || showers >= 5) risk += 8;
+
+    if (wind >= 60) risk += 25;
+    else if (wind >= 40) risk += 15;
+    else if (wind >= 25) risk += 7;
+
+    if (visibility <= 1000) risk += 15;
+    else if (visibility <= 3000) risk += 7;
+
+    return Math.min(100, Math.round(risk));
+}
+
+async function predictDisastersOnRoute(route, render = true) {
+    if (render) clearPredictedHazards();
+    if (!route?.geometry?.coordinates) {
+        return { hazards: [], risk: 0, weatherRisk: null, forecastPoints: 0 };
+    }
+
+    const samples = sampleRouteForPrediction(route.geometry.coordinates, 9);
+    const terrainResult = await estimateTerrainRisk(route);
+    const terrainRisk = terrainResult?.risk;
+    const durationSeconds = Number(route.duration || 0);
+
+    const forecastResults = await Promise.all(samples.map(async sample => {
+        const [lon, lat] = sample.coord;
+        try {
+            const weather = await fetchRoutePointForecast(lat, lon);
+            const hour = forecastIndexForFraction(sample.fraction, durationSeconds);
+            const classified = classifyPredictedHazards(weather, hour, terrainRisk);
+            const h = weather.hourly || {};
+            const scalarWeather = {
+                precipitation: Number(h.precipitation?.[hour] ?? 0),
+                rain: Number(h.rain?.[hour] ?? 0),
+                showers: Number(h.showers?.[hour] ?? 0),
+                snowfall: Number(h.snowfall?.[hour] ?? 0),
+                wind: Number(h.wind_speed_10m?.[hour] ?? 0),
+                visibility: Number(h.visibility?.[hour] ?? 99999),
+                temperature: Number(h.temperature_2m?.[hour] ?? 25),
+                humidity: Number(h.relative_humidity_2m?.[hour] ?? 60),
+                code: Number(h.weather_code?.[hour] ?? -1)
+            };
+            return {
+                ...sample, lat, lon, hour, ...classified,
+                weather: { ...weather, ...scalarWeather },
+                weatherRisk: calculateForecastWeatherRisk(scalarWeather)
+            };
+        } catch (error) {
+            console.warn("Prediction forecast failed for route point", lat, lon, error);
+            return { ...sample, lat, lon, hazards: [], weather: null, weatherRisk: null };
+        }
+    }));
+
+    const dedupe = new Map();
+    let maxRisk = 0;
+    let maxWeatherRisk = null;
+    let validForecastPoints = 0;
+
+    for (const point of forecastResults) {
+        if (!point.weather) continue;
+        validForecastPoints++;
+
+        if (Number.isFinite(point.weatherRisk)) {
+            maxWeatherRisk = maxWeatherRisk === null
+                ? point.weatherRisk
+                : Math.max(maxWeatherRisk, point.weatherRisk);
+        }
+
+        for (const hazard of point.hazards) {
+            const key = `${hazard.kind}-${Math.round(point.lat * 10)}-${Math.round(point.lon * 10)}-${point.hour}`;
+            if (dedupe.has(key)) continue;
+            dedupe.set(key, true);
+
+            let item;
+            if (render) {
+                item = createPredictedHazardOverlay(
+                    hazard, point.lat, point.lon,
+                    {
+                        ...point.weather,
+                        precipitation: Number(point.weather.precipitation ?? 0),
+                        wind: Number(point.weather.wind ?? 0),
+                        visibility: Number(point.weather.visibility ?? 99999)
+                    },
+                    point.fraction, point.hour, terrainRisk, durationSeconds
+                );
+            } else {
+                item = {
+                    kind: hazard.kind,
+                    title: hazard.title,
+                    severity: hazard.severity,
+                    score: hazard.score,
+                    lat: point.lat,
+                    lon: point.lon,
+                    fraction: point.fraction
+                };
+            }
+
+            predictedHazards.push(item);
+            maxRisk = Math.max(maxRisk, Number(hazard.score || 0));
+        }
+    }
+
+    return {
+        hazards: predictedHazards,
+        risk: Math.min(100, Math.round(maxRisk)),
+        weatherRisk: maxWeatherRisk,
+        forecastPoints: validForecastPoints
+    };
+}
+
+function renderSelectedRoute(route) {
+    if (!route) return;
+    [...hazardRouteLayers].forEach(layer => { try { map.removeLayer(layer); } catch (_) {} });
+    hazardRouteLayers = [];
+    if (routeLayer) {
+        try {
+            map.removeLayer(routeLayer);
+        } catch (_) {}
+    }
+
+    // Static route only. Disaster prediction is animated on the route,
+    // not the route itself.
+    const routeFeature = { type: "Feature", geometry: route.geometry };
+    routeLayer = L.geoJSON(routeFeature, {
+        style: { color: "#2563eb", weight: 6, opacity: .9 }
+    }).addTo(map);
+
+    // Highlight only route segments that enter an affected hazard zone.
+    const coords = route.geometry.coordinates || [];
+    for (let i = 1; i < coords.length; i++) {
+        const a = coords[i-1], b = coords[i];
+        const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const hazard = (sachetAlerts || []).find(alert => {
+            const c = parseCentroid(alert);
+            if (!c) return false;
+            return distanceKm(mid[1], mid[0], c[0], c[1]) <= visualRadiusKm(alert, hazardKind(alert));
+        });
+        if (hazard) {
+            const meta = severityMeta(hazard);
+            const segment = L.polyline([[a[1], a[0]], [b[1], b[0]]], {
+                color: meta.color,
+                weight: 8,
+                opacity: .92,
+                className: "hazard-route-segment"
+            }).addTo(map);
+            hazardRouteLayers.push(segment);
+        }
+    }
+    renderLiveHazardsOnSelectedRoute(route);
+    map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
+}
+
+
+function getPredictedHazardLabels(route) {
+    const labels = [];
+    for (const hazard of (route?.predictedHazards || [])) {
+        const title = String(hazard.title || '').toLowerCase();
+        if (title.includes('landslide')) labels.push('predicted landslide');
+        else if (title.includes('flood') || title.includes('waterlogging') || title.includes('rain')) labels.push('heavy-rain/flood');
+        else if (title.includes('thunder')) labels.push('thunderstorm');
+        else if (title.includes('snow')) labels.push('snowfall');
+        else if (title.includes('fog')) labels.push('dense fog');
+        else if (title.includes('storm') || title.includes('wind')) labels.push('severe wind/storm');
+        else if (title.includes('fire')) labels.push('fire-weather');
+    }
+    return [...new Set(labels)];
+}
+
+function buildRouteComparisonMessage(routes) {
+    if (!Array.isArray(routes) || routes.length < 2) return '';
+
+    const a = routes[0];
+    const b = routes[1];
+    const aDistance = Number(a.distance || 0) / 1000;
+    const bDistance = Number(b.distance || 0) / 1000;
+    const distanceDifference = Math.abs(aDistance - bDistance);
+    const aScore = Number(a.finalScore ?? 999);
+    const bScore = Number(b.finalScore ?? 999);
+    const aRisk = Number(a.disasterRisk ?? 0);
+    const bRisk = Number(b.disasterRisk ?? 0);
+    const bHazards = getPredictedHazardLabels(b);
+
+    // Route A is the recommended route because routeCandidates are sorted by
+    // the logistics score. Explain the decision instead of merely displaying it.
+    if (aDistance > bDistance + 0.5 && (aRisk < bRisk || aScore < bScore)) {
+        let reason;
+        if (bHazards.length >= 2) {
+            reason = bHazards.slice(0, 2).join(' and ');
+            return `Route A recommended despite being ${distanceDifference.toFixed(1)} km longer because Route B has high ${reason} exposure.`;
+        }
+        if (bHazards.length === 1) {
+            reason = bHazards[0];
+            return `Route A recommended despite being ${distanceDifference.toFixed(1)} km longer because Route B has higher ${reason} exposure.`;
+        }
+        return `Route A recommended despite being ${distanceDifference.toFixed(1)} km longer because Route B has higher overall disaster and accessibility risk.`;
+    }
+
+    if (aRisk < bRisk || aScore < bScore) {
+        if (bHazards.length >= 2) {
+            return `Route A recommended because Route B has higher ${bHazards.slice(0, 2).join(' and ')} exposure.`;
+        }
+        if (bHazards.length === 1) {
+            return `Route A recommended because Route B has higher ${bHazards[0]} exposure.`;
+        }
+        return `Route A recommended because it has the lower overall logistics risk after comparing disaster, weather, terrain, accessibility and vehicle factors.`;
+    }
+
+    return `Route A recommended because it provides the better overall logistics score for this delivery.`;
+}
+
+function renderLogisticsRecommendation(
+    route,
+    from,
+    destination
+) {
+
+    const goods =
+        document.getElementById("goodsType").selectedOptions[0].text;
+
+    const quantity =
+        Number(document.getElementById("quantity").value || 0);
+
+    const priority =
+        document.getElementById("priority").selectedOptions[0].text;
+
+    const vehicle =
+        document.getElementById("vehicle").selectedOptions[0].text;
+
+    const distance =
+        (route.distance / 1000).toFixed(1);
+
+    const eta =
+        Math.round(route.duration / 60);
+
+    const risk =
+        route.disasterRisk;
+
+    let decision;
+
+    if (risk >= 70) {
+        decision =
+            "🔴 High disaster exposure. Avoid unless no feasible alternative exists.";
+    } else if (risk >= 40) {
+        decision =
+            "🟠 Moderate exposure. Dispatch only with caution and continuous monitoring.";
+    } else {
+        decision =
+            "🟢 Low current disaster exposure. Recommended for dispatch.";
+    }
+
+    document.getElementById(
+        "logisticsRecommendation"
+    ).innerHTML = `
+        <b>AI Logistics Recommendation</b>
+
+        <p>
+            Deliver <b>${escapeHTML(goods)}</b>
+            (${quantity.toLocaleString()} kg)
+            from <b>${escapeHTML(from.name || "origin")}</b>
+            to <b>${escapeHTML(destination.name || "destination")}</b>.
+        </p>
+
+        <p>
+            Priority: <b>${escapeHTML(priority)}</b><br>
+            Vehicle: <b>${escapeHTML(vehicle)}</b><br>
+            Distance: <b>${distance} km</b><br>
+            Estimated travel time: <b>${eta} minutes</b>
+        </p>
+
+        <p>
+            ${decision}
+        </p>
+
+        ${buildRouteComparisonMessage(routeCandidates) ? `<div class="route-comparison" style="margin:12px 0;padding:12px 14px;border-left:4px solid #2563eb;background:#eff6ff;border-radius:8px;font-weight:700;line-height:1.45">🧠 ${escapeHTML(buildRouteComparisonMessage(routeCandidates))}</div>` : ''}
+
+        <p class="mini">
+            Recommendation combines route distance/time, government disaster
+            exposure, weather risk, terrain exposure indicator, vehicle compatibility
+            and accessibility. It is an optimisation score, not a certified
+            emergency instruction.
+        </p>
+    `;
+}
+
+
+// ------------------------------------------------------
+// NER FOCUS
+// ------------------------------------------------------
+
+document.getElementById("fitNERBtn")
+.addEventListener("click", () => {
+
+    // Approximate NER bounding box for the interface.
+    // This is a map-view convenience, not an administrative boundary dataset.
+    map.fitBounds([
+        [21.0, 88.0],
+        [29.8, 97.5]
+    ]);
+
+    setStatus("📍 Map focused on the North Eastern Region.");
+});
+
+
+
+// ------------------------------------------------------
+// RISK ENGINE
+// ------------------------------------------------------
+
+function calculateRisk(routeCoordinates) {
+
+    let risk = 0;
+
+    const alerts = sachetAlerts || [];
+
+    if (!alerts.length || !routeCoordinates.length) {
+        return 0;
+    }
+
+    // Sampling keeps the browser responsive on long routes.
+    const step =
+        Math.max(
+            1,
+            Math.floor(routeCoordinates.length / 120)
+        );
+
+    const sampledPoints =
+        routeCoordinates.filter(
+            (_, index) => index % step === 0
+        );
+
+    for (const alert of alerts) {
+
+        if (!alert.centroid) continue;
+
+        const parts =
+            String(alert.centroid).split(",");
+
+        if (parts.length !== 2) continue;
+
+        const alertLon = parseFloat(parts[0]);
+        const alertLat = parseFloat(parts[1]);
+
+        if (
+            !Number.isFinite(alertLat) ||
+            !Number.isFinite(alertLon)
+        ) {
+            continue;
+        }
+
+        const alertRadius = visualRadiusKm(alert, hazardKind(alert));
+        if (!Number.isFinite(alertRadius)) continue;
+        let closestDistance = Infinity;
+
+        for (const point of sampledPoints) {
+
+            const distance =
+                distanceKm(
+                    point[1],
+                    point[0],
+                    alertLat,
+                    alertLon
+                );
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+            }
+        }
+
+        if (closestDistance <= alertRadius) {
+
+            const severity =
+                String(
+                    alert.severity_color ||
+                    alert.severity_level ||
+                    alert.severity ||
+                    "yellow"
+                ).toLowerCase();
+
+            const type =
+                String(
+                    alert.disaster_type ||
+                    alert.event ||
+                    ""
+                ).toLowerCase();
+
+            let contribution = 15;
+
+            if (
+                severity.includes("red") ||
+                severity.includes("severe") ||
+                severity.includes("extreme")
+            ) {
+                contribution = 50;
+            } else if (
+                severity.includes("orange") ||
+                severity.includes("high")
+            ) {
+                contribution = 30;
+            }
+
+            // Additional hazard weighting for logistics.
+            if (
+                type.includes("landslide") ||
+                type.includes("flood")
+            ) {
+                contribution += 10;
+            }
+
+            if (closestDistance < Math.min(10, alertRadius * 0.25)) {
+                contribution += 10;
+            }
+
+            risk += contribution;
+        }
+    }
+
+    return Math.min(
+        Math.round(risk),
+        100
+    );
+}
+
+
+
+// ------------------------------------------------------
+// SHOW RISK
+// ------------------------------------------------------
+
+function showRisk(score) {
+
+    document.getElementById(
+        "riskScore"
+    ).textContent =
+        score + "/100";
+
+
+    let recommendation;
+
+
+    if (score >= 70) {
+
+        recommendation =
+            "🔴 HIGH RISK — Avoid this route.";
+
+    } else if (score >= 40) {
+
+        recommendation =
+            "🟠 MODERATE RISK — Consider an alternative.";
+
+    } else if (score > 0) {
+
+        recommendation =
+            "🟡 LOW-MODERATE RISK — Travel with caution.";
+
+    } else {
+
+        recommendation =
+            "🟢 LOW RISK — No nearby government disaster hazard detected.";
+    }
+
+
+    document.getElementById(
+        "recommendation"
+    ).textContent =
+        recommendation;
+}
+
+
+// ------------------------------------------------------
+// DISTANCE
+// ------------------------------------------------------
+
+function distanceKm(
+    lat1,
+    lon1,
+    lat2,
+    lon2
+) {
+
+    const R = 6371;
+
+    const dLat =
+        toRad(lat2 - lat1);
+
+    const dLon =
+        toRad(lon2 - lon1);
+
+
+    const a =
+        Math.sin(dLat / 2) *
+        Math.sin(dLat / 2) +
+
+        Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+
+    return (
+        R *
+        2 *
+        Math.atan2(
+            Math.sqrt(a),
+            Math.sqrt(1 - a)
+        )
+    );
+}
+
+
+function toRad(value) {
+
+    return value *
+        Math.PI /
+        180;
+}
+
+
+// ------------------------------------------------------
+// SECURITY / HTML ESCAPE
+// ------------------------------------------------------
+
+function escapeHTML(value) {
+
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+
+
+// ------------------------------------------------------
+// INFRASTRUCTURE MARKERS
+// ------------------------------------------------------
+// Intentionally empty on initial load.
+// Do not show fake/demo location markers before the user
+// searches for a route. Real infrastructure data can be
+// added here later from an approved government/open dataset.
+const infrastructureLayer = L.layerGroup();
+
+
+// ------------------------------------------------------
+// SMART INDIAN LOCATION AUTOCOMPLETE
+// ------------------------------------------------------
+// Famous/major Indian places are intentionally ranked first.
+// Selecting one of these entries uses its known coordinates immediately;
+// broader Nominatim results are shown underneath when needed.
+const famousIndianPlaces = [
+    { name: "Kolkata", state: "West Bengal", lat: 22.5726, lon: 88.3639 },
+    { name: "New Delhi", state: "Delhi", lat: 28.6139, lon: 77.2090 },
+    { name: "Mumbai", state: "Maharashtra", lat: 19.0760, lon: 72.8777 },
+    { name: "Bengaluru", state: "Karnataka", lat: 12.9716, lon: 77.5946 },
+    { name: "Chennai", state: "Tamil Nadu", lat: 13.0827, lon: 80.2707 },
+    { name: "Hyderabad", state: "Telangana", lat: 17.3850, lon: 78.4867 },
+    { name: "Ahmedabad", state: "Gujarat", lat: 23.0225, lon: 72.5714 },
+    { name: "Pune", state: "Maharashtra", lat: 18.5204, lon: 73.8567 },
+    { name: "Jaipur", state: "Rajasthan", lat: 26.9124, lon: 75.7873 },
+    { name: "Lucknow", state: "Uttar Pradesh", lat: 26.8467, lon: 80.9462 },
+    { name: "Patna", state: "Bihar", lat: 25.5941, lon: 85.1376 },
+    { name: "Guwahati", state: "Assam", lat: 26.1445, lon: 91.7362 },
+    { name: "Siliguri", state: "West Bengal", lat: 26.7271, lon: 88.3953 },
+    { name: "Shillong", state: "Meghalaya", lat: 25.5788, lon: 91.8933 },
+    { name: "Agartala", state: "Tripura", lat: 23.8315, lon: 91.2868 },
+    { name: "Gangtok", state: "Sikkim", lat: 27.3389, lon: 88.6065 },
+    { name: "Imphal", state: "Manipur", lat: 24.8170, lon: 93.9368 },
+    { name: "Aizawl", state: "Mizoram", lat: 23.7271, lon: 92.7176 },
+    { name: "Kohima", state: "Nagaland", lat: 25.6751, lon: 94.1086 },
+    { name: "Itanagar", state: "Arunachal Pradesh", lat: 27.0844, lon: 93.6053 },
+    { name: "Darjeeling", state: "West Bengal", lat: 27.0410, lon: 88.2663 },
+    { name: "Varanasi", state: "Uttar Pradesh", lat: 25.3176, lon: 82.9739 },
+    { name: "Agra", state: "Uttar Pradesh", lat: 27.1767, lon: 78.0081 },
+    { name: "Ayodhya", state: "Uttar Pradesh", lat: 26.7956, lon: 82.1943 },
+    { name: "Prayagraj", state: "Uttar Pradesh", lat: 25.4358, lon: 81.8463 },
+    { name: "Mathura", state: "Uttar Pradesh", lat: 27.4924, lon: 77.6737 },
+    { name: "Vrindavan", state: "Uttar Pradesh", lat: 27.5650, lon: 77.6593 },
+    { name: "Bodh Gaya", state: "Bihar", lat: 24.6961, lon: 84.9914 },
+    { name: "Amritsar", state: "Punjab", lat: 31.6340, lon: 74.8723 },
+    { name: "Chandigarh", state: "Chandigarh", lat: 30.7333, lon: 76.7794 },
+    { name: "Srinagar", state: "Jammu and Kashmir", lat: 34.0837, lon: 74.7973 },
+    { name: "Jammu", state: "Jammu and Kashmir", lat: 32.7266, lon: 74.8570 },
+    { name: "Dehradun", state: "Uttarakhand", lat: 30.3165, lon: 78.0322 },
+    { name: "Rishikesh", state: "Uttarakhand", lat: 30.0869, lon: 78.2676 },
+    { name: "Haridwar", state: "Uttarakhand", lat: 29.9457, lon: 78.1642 },
+    { name: "Shimla", state: "Himachal Pradesh", lat: 31.1048, lon: 77.1734 },
+    { name: "Manali", state: "Himachal Pradesh", lat: 32.2396, lon: 77.1887 },
+    { name: "Leh", state: "Ladakh", lat: 34.1526, lon: 77.5771 },
+    { name: "Goa", state: "Goa", lat: 15.2993, lon: 74.1240 },
+    { name: "Panaji", state: "Goa", lat: 15.4909, lon: 73.8278 },
+    { name: "Bhubaneswar", state: "Odisha", lat: 20.2961, lon: 85.8245 },
+    { name: "Puri", state: "Odisha", lat: 19.8135, lon: 85.8312 },
+    { name: "Ranchi", state: "Jharkhand", lat: 23.3441, lon: 85.3096 },
+    { name: "Raipur", state: "Chhattisgarh", lat: 21.2514, lon: 81.6296 },
+    { name: "Bhopal", state: "Madhya Pradesh", lat: 23.2599, lon: 77.4126 },
+    { name: "Indore", state: "Madhya Pradesh", lat: 22.7196, lon: 75.8577 },
+    { name: "Nagpur", state: "Maharashtra", lat: 21.1458, lon: 79.0882 },
+    { name: "Surat", state: "Gujarat", lat: 21.1702, lon: 72.8311 },
+    { name: "Vadodara", state: "Gujarat", lat: 22.3072, lon: 73.1812 },
+    { name: "Udaipur", state: "Rajasthan", lat: 24.5854, lon: 73.7125 },
+    { name: "Jodhpur", state: "Rajasthan", lat: 26.2389, lon: 73.0243 },
+    { name: "Ajmer", state: "Rajasthan", lat: 26.4499, lon: 74.6399 },
+    { name: "Kochi", state: "Kerala", lat: 9.9312, lon: 76.2673 },
+    { name: "Thiruvananthapuram", state: "Kerala", lat: 8.5241, lon: 76.9366 },
+    { name: "Coimbatore", state: "Tamil Nadu", lat: 11.0168, lon: 76.9558 },
+    { name: "Mysuru", state: "Karnataka", lat: 12.2958, lon: 76.6394 },
+    { name: "Visakhapatnam", state: "Andhra Pradesh", lat: 17.6868, lon: 83.2185 },
+    { name: "Vijayawada", state: "Andhra Pradesh", lat: 16.5062, lon: 80.6480 }
+];
+
+const autocompleteState = new WeakMap();
+
+function normalizePlaceText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function placeMatches(place, query) {
+    const q = normalizePlaceText(query);
+    if (!q) return true;
+    const name = normalizePlaceText(place.name);
+    const state = normalizePlaceText(place.state);
+    return name.startsWith(q) || name.includes(q) || state.includes(q);
+}
+
+function rankFamousPlaces(query) {
+    const q = normalizePlaceText(query);
+    if (!q) return famousIndianPlaces.slice(0, 8);
+
+    return famousIndianPlaces
+        .map((place, index) => {
+            const name = normalizePlaceText(place.name);
+            const state = normalizePlaceText(place.state);
+            let score = 0;
+            if (name === q) score += 1000;
+            else if (name.startsWith(q)) score += 800;
+            else if (name.includes(q)) score += 600;
+            else if (state.startsWith(q)) score += 300;
+            else if (state.includes(q)) score += 200;
+            else return null;
+            score -= index * 0.01;
+            return { place, score };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score)
+        .map(item => item.place);
+}
+
+function setLocationInput(input, place) {
+    input.value = place.name;
+    input.dataset.lat = String(place.lat);
+    input.dataset.lon = String(place.lon);
+    input.dataset.displayName = `${place.name}, ${place.state}, India`;
+}
+
+function clearLocationCoordinates(input) {
+    delete input.dataset.lat;
+    delete input.dataset.lon;
+    delete input.dataset.displayName;
+}
+
+function renderLocationSuggestions(input, suggestions, query, isLoading = false) {
+    const box = input.parentElement.querySelector(".location-suggestions");
+
+    // Do not display the dropdown until the user has typed something.
+    if (!String(query || "").trim()) {
+        closeLocationSuggestions(input);
+        return;
+    }
+
+    if (isLoading) {
+        box.innerHTML = '<div class="suggestions-loading">Searching Indian places...</div>';
+        box.classList.add("open");
+        return;
+    }
+
+    if (!suggestions.length) {
+        box.innerHTML = '<div class="suggestions-empty">No matching place found. Try a city, town or district name.</div>';
+        box.classList.add("open");
+        return;
+    }
+
+    box.innerHTML = suggestions.map((item, index) => {
+        const safeName = escapeHTML(item.name);
+        const safeDetail = escapeHTML(item.state ? `${item.state}, India` : (item.display_name || "India"));
+        const badge = item.famous ? '<span class="place-badge">POPULAR IN INDIA</span>' : '';
+        return `
+            <button type="button" class="location-suggestion${index === 0 ? ' active' : ''}" data-index="${index}" role="option">
+                <div class="place-name">${safeName}${badge}</div>
+                <div class="place-detail">${safeDetail}</div>
+            </button>
+        `;
+    }).join("");
+
+    box.classList.add("open");
+
+    box.querySelectorAll(".location-suggestion").forEach((button, index) => {
+        button.addEventListener("mousedown", event => {
+            event.preventDefault();
+            const selected = suggestions[index];
+            setLocationInput(input, selected);
+            box.classList.remove("open");
+            box.innerHTML = "";
+        });
+    });
+}
+
+function closeLocationSuggestions(input) {
+    const box = input.parentElement.querySelector(".location-suggestions");
+    if (box) box.classList.remove("open");
+}
+
+async function searchNominatimSuggestions(query, signal) {
+    const url =
+        "https://nominatim.openstreetmap.org/search" +
+        "?format=jsonv2" +
+        "&limit=6" +
+        "&addressdetails=1" +
+        "&countrycodes=in" +
+        "&q=" + encodeURIComponent(query);
+
+    const response = await fetch(url, { signal });
+    if (!response.ok) throw new Error("Location search failed");
+
+    const data = await response.json();
+
+    return data.map(item => {
+        const address = item.address || {};
+        const name =
+            address.city ||
+            address.town ||
+            address.municipality ||
+            address.village ||
+            address.county ||
+            item.display_name.split(",")[0];
+
+        const state = address.state || address.state_district || "India";
+
+        return {
+            name,
+            state,
+            lat: parseFloat(item.lat),
+            lon: parseFloat(item.lon),
+            display_name: item.display_name,
+            famous: false
+        };
+    });
+}
+
+function setupLocationAutocomplete(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    let timer = null;
+    let controller = null;
+    let suggestions = [];
+    let activeIndex = 0;
+
+    autocompleteState.set(input, {
+        getSuggestions: () => suggestions,
+        getActiveIndex: () => activeIndex
+    });
+
+    input.addEventListener("input", () => {
+        clearLocationCoordinates(input);
+        clearTimeout(timer);
+        if (controller) controller.abort();
+
+        const query = input.value.trim();
+        const box = input.parentElement.querySelector(".location-suggestions");
+
+        if (query.length < 1) {
+            closeLocationSuggestions(input);
+            return;
+        }
+
+        const famous = rankFamousPlaces(query).map(place => ({ ...place, famous: true }));
+        suggestions = famous.slice(0, 7);
+        activeIndex = 0;
+
+        // Show famous/major Indian places immediately, without waiting for Nominatim.
+        renderLocationSuggestions(input, suggestions, query);
+
+        // Search broader Indian locations after a short pause.
+        if (query.length < 2) return;
+
+        timer = setTimeout(async () => {
+            controller = new AbortController();
+            try {
+                renderLocationSuggestions(input, suggestions, query, true);
+                const remote = await searchNominatimSuggestions(query, controller.signal);
+
+                const existing = new Set(famous.map(p => `${normalizePlaceText(p.name)}|${normalizePlaceText(p.state)}`));
+                const merged = [...famous];
+
+                for (const item of remote) {
+                    const key = `${normalizePlaceText(item.name)}|${normalizePlaceText(item.state)}`;
+                    if (!existing.has(key)) {
+                        merged.push(item);
+                        existing.add(key);
+                    }
+                }
+                suggestions = merged.slice(0, 12);
+                activeIndex = 0;
+                renderLocationSuggestions(input, suggestions, query);
+            } catch (error) {
+                if (error.name === "AbortError") return;
+                // Keep curated Indian suggestions available even if remote search fails.
+                suggestions = famous.slice(0, 7);
+                renderLocationSuggestions(input, suggestions, query);
+            }
+        }, 350);
+    });
+
+    input.addEventListener("keydown", event => {
+        const box = input.parentElement.querySelector(".location-suggestions");
+        if (!box || !box.classList.contains("open") || !suggestions.length) return;
+
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            activeIndex = (activeIndex + 1) % suggestions.length;
+        } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            activeIndex = (activeIndex - 1 + suggestions.length) % suggestions.length;
+        } else if (event.key === "Enter") {
+            event.preventDefault();
+            const selected = suggestions[activeIndex];
+            if (selected) {
+                setLocationInput(input, selected);
+                closeLocationSuggestions(input);
+            }
+            return;
+        } else if (event.key === "Escape") {
+            closeLocationSuggestions(input);
+            return;
+        } else {
+            return;
+        }
+
+        box.querySelectorAll(".location-suggestion").forEach((button, index) => {
+            button.classList.toggle("active", index === activeIndex);
+        });
+    });
+
+    input.addEventListener("blur", () => {
+        // mousedown selection runs first; this short delay keeps click selection reliable.
+        setTimeout(() => closeLocationSuggestions(input), 120);
+    });
+
+    input.addEventListener("focus", () => {
+        // Never show suggestions for an empty input.
+        // Suggestions appear only after the user types at least 1 character.
+        const query = input.value.trim();
+        if (query.length >= 1) {
+            input.dispatchEvent(new Event("input"));
+        } else {
+            closeLocationSuggestions(input);
+        }
+    });
+}
+
+setupLocationAutocomplete("from");
+setupLocationAutocomplete("to");
+
+// ------------------------------------------------------
+// INITIAL LOAD
+// ------------------------------------------------------
+
+updateAlertLegend();
+loadSachetAlerts();
+
+
+// Refresh every 5 minutes
+setInterval(
+    loadSachetAlerts,
+    5 * 60 * 1000
+);
+
+</script>
+
+</body>
+</html>

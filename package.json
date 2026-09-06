@@ -1,0 +1,17 @@
+{
+  "name": "sih-26002-sachet-fix",
+  "version": "2.0.0",
+  "private": true,
+  "description": "SIH 26002 SACHET NDMA backend proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "fast-xml-parser": "^5.3.0"
+  }
+}
