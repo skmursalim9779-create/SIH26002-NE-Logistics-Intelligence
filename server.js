@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const { XMLParser } = require("fast-xml-parser");
 
 const app = express();
@@ -96,7 +97,9 @@ app.use(
         extensions: ["html"],
     })
 );
-
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
 
 /*
 ========================================================
