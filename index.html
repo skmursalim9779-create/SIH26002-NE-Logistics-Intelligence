@@ -4397,11 +4397,33 @@ async function estimateTerrainRisk(route) {
         // Conservative terrain-exposure score. Flat plains remain close to 0;
         // high elevation and steep grades increase exposure. It is not itself
         // a claim that a landslide will occur.
-        const elevationComponent = Math.min(55, Math.max(0, maxElevationM - 50) / 60);
-        const gradeComponent = Math.min(45, maxGradePct * 8);
-        const risk = Math.max(0, Math.min(100, Math.round(
-            elevationComponent * 0.55 + gradeComponent * 0.45
-        )));
+        const isLowland = maxElevationM <= 100;
+
+// Ignore small DEM/sampling slope spikes in flat lowland areas.
+const effectiveGradePct = isLowland
+    ? Math.min(maxGradePct, 2.5)
+    : maxGradePct;
+
+const elevationComponent = Math.min(
+    55,
+    Math.max(0, maxElevationM - 50) / 60
+);
+
+const gradeComponent = Math.min(
+    45,
+    effectiveGradePct * 8
+);
+
+const risk = Math.max(
+    0,
+    Math.min(
+        100,
+        Math.round(
+            elevationComponent * 0.55 +
+            gradeComponent * 0.45
+        )
+    )
+);
 
         return {
             risk,
