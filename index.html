@@ -1169,6 +1169,7 @@ let selectedRouteIndex = 0;
 
 let sachetAlerts = [];
 let routeCandidates = [];
+let hasSearchedRoute = false;
 let lastRouteRisk = null;
 let lastWeatherRisk = 0;
 let lastAccessibility = 0;
@@ -2811,7 +2812,13 @@ if (!alerts.length) {
         sachetAlerts = alerts;
 
         if (countBox) {
-            countBox.textContent = alerts.length;
+            countBox.textContent =
+    hasSearchedRoute &&
+    routeCandidates[selectedRouteIndex]?.geometry?.coordinates
+        ? countRouteAlerts(
+              routeCandidates[selectedRouteIndex].geometry.coordinates
+          )
+        : "--";
         }
 
         displaySachetAlerts();
@@ -3471,7 +3478,15 @@ function routePointNearAlert(coords, alert) {
 
     return best;
 }
+function countRouteAlerts(routeCoordinates) {
+    if (!Array.isArray(routeCoordinates) || routeCoordinates.length < 2) {
+        return 0;
+    }
 
+    return (sachetAlerts || []).filter(alert =>
+        !!routePointNearAlert(routeCoordinates, alert)
+    ).length;
+}
 function renderLiveHazardsOnSelectedRoute(route) {
     clearRouteLiveHazards();
     if (!route?.geometry?.coordinates || !Array.isArray(sachetAlerts) || !sachetAlerts.length) return;
@@ -3875,6 +3890,7 @@ const needsSiliguriGateway =
     const lat1 = startLat * Math.PI / 180, lat2 = endLat * Math.PI / 180;
     const dLat = endLat - startLat, dLon = (endLon - startLon) * Math.cos((startLat + endLat) * Math.PI / 360);
     const straightKm = Math.max(1, Math.sqrt(dLat*dLat + dLon*dLon) * 111.2);
+    const isShortLocalTrip = !destinationIsNER && straightKm <= 25;
     const midLat = (startLat + endLat) / 2;
     const midLon = (startLon + endLon) / 2;
     const bearingX = endLon - startLon;
@@ -3928,6 +3944,7 @@ const needsSiliguriGateway =
     // Generic corridor routing applies to every origin/destination pair.
     // Generic corridors are queried for every trip. Do not require them all to
     // be used; OSRM may reject an offset point if no nearby drivable road exists.
+    if (!isShortLocalTrip) {
     for (let i = 0; i < corridors.length; i++) {
         await requestRoute([
             { lat: startLat, lon: startLon },
@@ -3935,6 +3952,7 @@ const needsSiliguriGateway =
             { lat: endLat, lon: endLon }
         ], `Alternative corridor ${i + 1}`);
     }
+}
 
     if (!allRoutes.length) throw new Error("No drivable route was returned.");
 
@@ -3998,7 +4016,7 @@ const needsSiliguriGateway =
     // If the first two are still not distinct, make a final set of progressively
     // wider corridor requests. This is still real OSRM routing, never a cloned
     // or shifted polyline.
-    if (selected.length < 2) {
+    if (selected.length < 2 && !isShortLocalTrip) {
         const wider = [70, 90, 120];
         for (const km of wider) {
             if (selected.length >= 2) break;
@@ -4114,7 +4132,10 @@ document.getElementById("routeBtn")
         destinationMarker = L.marker([destination.lat, destination.lon])
             .addTo(map)
             .bindPopup("DESTINATION");
-
+console.log("ROUTE DEBUG:", JSON.stringify({
+    from: { lat: from.lat, lon: from.lon, name: from.name },
+    destination: { lat: destination.lat, lon: destination.lon, name: destination.name }
+}, null, 2));
         const routeData = await getRoute(
             from.lat,
             from.lon,
@@ -4125,6 +4146,7 @@ document.getElementById("routeBtn")
         if (!routeData.routes || routeData.routes.length === 0) {
             throw new Error("No route found");
         }
+        hasSearchedRoute = true;
 
         if (routeLayer) {
             map.removeLayer(routeLayer);
@@ -4254,6 +4276,8 @@ document.getElementById("routeBtn")
         selectedRouteIndex = 0;
         const recommended = routeCandidates[0];
         lastRouteRisk = recommended.disasterRisk;
+        document.getElementById("activeAlertCount").textContent =
+    countRouteAlerts(recommended.geometry.coordinates);
         document.getElementById("dashboardRisk").textContent = recommended.disasterRisk + "/100";
         document.getElementById("accessibilityScore").textContent = recommended.accessibility + "/100";
         showRisk(recommended.disasterRisk);
@@ -4294,10 +4318,10 @@ function calculateLogisticsScore({
 
     // Normalize route length/time to a bounded 0-100 penalty.
     const distanceRisk =
-        Math.min(distanceKmValue / 5, 100);
+        Math.min((distanceKmValue / 5) * 100, 100);
 
     const timeRisk =
-        Math.min(durationMin / 10, 100);
+        Math.min((durationMin / 10) * 100, 100);
 
     // Lower is better.
     const accessibilityRisk =
@@ -4450,7 +4474,39 @@ function calculateAccessibilityScore(
         Math.min(Math.round(score), 100)
     );
 }
+function getVehicleAdjustedDuration(durationSeconds, distanceMeters = 0) {
+    const vehicle = document.getElementById("vehicle")?.value;
 
+    const baseMinutes = Number(durationSeconds || 0) / 60;
+    const distanceKm = Number(distanceMeters || 0) / 1000;
+
+    let adjustedBaseMinutes = baseMinutes;
+
+    // Realistic ETA for short urban routes
+    if (distanceKm > 0 && distanceKm <= 20) {
+        const urbanMinutes =
+            (distanceKm / 20) * 60 + 1.2;
+
+        adjustedBaseMinutes = Math.max(
+            baseMinutes,
+            urbanMinutes,
+            5
+        );
+    }
+
+    const multipliers = {
+        medium: 1.00,
+        heavy: 1.11,
+        "4x4": 0.94,
+        emergency: 0.89
+    };
+
+    const multiplier = multipliers[vehicle] ?? 1.00;
+
+    return Math.round(
+        adjustedBaseMinutes * multiplier
+    );
+}
 
 function renderRouteAlternatives(routes) {
     const container = document.getElementById("routeAlternatives");
@@ -4461,7 +4517,10 @@ function renderRouteAlternatives(routes) {
 
     container.innerHTML = routes.map((route, i) => {
         const distance = (route.distance / 1000).toFixed(1);
-        const duration = Math.round(route.duration / 60);
+        const duration = getVehicleAdjustedDuration(
+    route.duration,
+    route.distance
+);
         const score = route.finalScore;
         const scoreClass = score <= 35 ? "score-good" : score <= 65 ? "score-mid" : "score-bad";
         const cls = `route-card clickable ${i === selectedRouteIndex ? "selected" : ""} ${i === 0 ? "best" : ""}`;
@@ -4491,6 +4550,8 @@ function renderRouteAlternatives(routes) {
         const select = async () => {
             selectedRouteIndex = Number(card.dataset.routeIndex);
             const route = routeCandidates[selectedRouteIndex];
+            document.getElementById("activeAlertCount").textContent =
+    countRouteAlerts(route.geometry.coordinates);
             if (!route) return;
             renderSelectedRoute(route);
             clearPredictedHazards();
@@ -5020,7 +5081,10 @@ function renderLogisticsRecommendation(
         (route.distance / 1000).toFixed(1);
 
     const eta =
-        Math.round(route.duration / 60);
+    getVehicleAdjustedDuration(
+        route.duration,
+        route.distance
+    );
 
     const risk =
         route.disasterRisk;
@@ -5669,7 +5733,21 @@ setInterval(
     loadSachetAlerts,
     5 * 60 * 1000
 );
+document.getElementById("vehicle")?.addEventListener("change", () => {
+    if (!routeCandidates.length) return;
 
+    renderRouteAlternatives(routeCandidates);
+
+    const route = routeCandidates[selectedRouteIndex];
+
+    if (route) {
+        renderLogisticsRecommendation(
+            route,
+            route._from,
+            route._destination
+        );
+    }
+});
 </script>
 
 </body>
