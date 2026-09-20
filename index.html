@@ -4348,6 +4348,10 @@ console.log("ROUTE DEBUG:", JSON.stringify({
 
         // Refresh weather for destination.
         await loadWeather(destination.lat, destination.lon);
+        // Keep live precipitation radar available during route search
+loadLiveRainRadar().catch(err => {
+    console.warn("RainViewer radar unavailable:", err);
+});
 
         const priority = document.getElementById("priority").value;
         const priorityBoost =
@@ -4506,6 +4510,15 @@ const recommended = routeCandidates[0];
         document.getElementById("accessibilityScore").textContent = recommended.accessibility + "/100";
         showRisk(recommended.disasterRisk);
         renderSelectedRoute(recommended);
+       // Render forecast-based hazards for the initially recommended route
+predictDisastersOnRoute(recommended, true)
+    .then(prediction => {
+        recommended.predictedRisk = prediction.risk;
+        recommended.predictedHazards = prediction.hazards;
+    })
+    .catch(error => {
+        console.warn("Initial predicted hazard rendering failed:", error);
+    });
         renderRouteAlternatives(routeCandidates);
         renderAIDisasterNews(recommended);
         renderLogisticsRecommendation(recommended, from, destination);
@@ -4982,6 +4995,7 @@ function clearPredictedHazards() {
 function predictionColor(kind) {
     if (kind === "flood") return "#0284c7";
     if (kind === "landslide") return "#b45309";
+    if (kind === "rain") return "#3b82f6";
     if (kind === "thunder") return "#7c3aed";
     if (kind === "fog") return "#64748b";
     if (kind === "snow") return "#2563eb";
@@ -5031,7 +5045,28 @@ function classifyPredictedHazards(weather, hourIndex, terrainRisk) {
     if ([95, 96, 99].includes(code)) {
         result.push({ kind: "thunder", title: "Predicted Thunderstorm", severity: wind >= 55 ? "High" : "Moderate", score: wind >= 55 ? 32 : 24 });
     }
-
+// Rain prediction.
+// This represents forecast rain near the route.
+// It is separate from flood/waterlogging prediction.
+if (
+    (rain >= 2 || showers >= 2 || precipitation >= 2) &&
+    precipitation < 20 &&
+    rain < 18 &&
+    showers < 18
+) {
+    result.push({
+        kind: "rain",
+        title: "Predicted Rainfall",
+        severity:
+            precipitation >= 10 || rain >= 10 || showers >= 10
+                ? "High"
+                : "Moderate",
+        score:
+            precipitation >= 10 || rain >= 10 || showers >= 10
+                ? 20
+                : 12
+    });
+}
     // Heavy rain / runoff conditions. This is a prediction, not a flood warning.
     if (precipitation >= 20 || rain >= 18 || showers >= 18) {
         result.push({ kind: "flood", title: "Predicted Flood / Waterlogging Risk", severity: precipitation >= 35 ? "High" : "Moderate", score: precipitation >= 35 ? 34 : 24 });
@@ -5342,6 +5377,8 @@ function renderSelectedRoute(route) {
         }
     }
     renderLiveHazardsOnSelectedRoute(route);
+    // Render predicted hazards for the currently selected route
+
     map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
 }
 
