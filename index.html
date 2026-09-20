@@ -4197,7 +4197,7 @@ const needsSiliguriGateway =
         if (candidate) selected.push(candidate);
     }
     for (const route of ranked) {
-    if (selected.length >= 3) break;
+    if (selected.length >= 2) break;
     if (distinctFrom(route, selected)) {
         selected.push(route);
     }
@@ -4237,13 +4237,13 @@ const needsSiliguriGateway =
         }
     }
 
-    if (selected.length < 3) {
+    if (selected.length < 2) {
         throw new Error("Only one feasible road was returned by the routing network. A second real road alternative is not available for this location pair.");
     }
 
     return {
     code: "Ok",
-    routes: selected.slice(0, 3),
+    routes: selected.slice(0, 2),
     waypoints: direct
 };
 }
